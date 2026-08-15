@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.coverage
+coverage.xml
+.env
+.env.*
+*.db
+*.sqlite
+*.sqlite3
+credentials.json
+HealthAll_*.zip
+运行/
+事实/
