@@ -1,0 +1,20 @@
+{
+  "name": "fitness-connector",
+  "interface": {
+    "displayName": "Fitness Connector"
+  },
+  "plugins": [
+    {
+      "name": "fitness-connector",
+      "source": {
+        "source": "local",
+        "path": "./plugins/fitness-connector"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

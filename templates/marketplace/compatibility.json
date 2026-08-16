@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "marketplace": "fitness-connector",
+  "plugin": "fitness-connector",
+  "version": "0.1.0",
+  "requires": [
+    "fitness-agent>=1.0.0"
+  ]
+}
