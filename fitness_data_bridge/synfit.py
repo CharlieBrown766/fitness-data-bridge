@@ -15,9 +15,27 @@ from .sqlite_executor import SQLitePlanExecutor
 SYNFIT_APP = Path("/Applications/SynFit.app")
 
 
+def synfit_is_running() -> bool:
+    """Return whether the SynFit app bundle already has a running process."""
+
+    completed = subprocess.run(
+        ["osascript", "-e", 'application "SynFit" is running'],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return completed.stdout.strip().lower() == "true"
+
+
 def launch_synfit() -> None:
     if sys.platform != "darwin" or not SYNFIT_APP.exists():
         raise WriteGateError("SynFit is unavailable on this device")
+    if synfit_is_running():
+        subprocess.run(
+            ["osascript", "-e", 'tell application "SynFit" to quit'],
+            check=True,
+        )
+        time.sleep(2)
     subprocess.run(["open", "-a", str(SYNFIT_APP)], check=True)
 
 

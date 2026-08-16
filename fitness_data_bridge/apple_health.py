@@ -14,7 +14,7 @@ from io import TextIOWrapper
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from .errors import FitnessAgentError
+from .errors import FitnessDataBridgeError
 from .layout import resolve_workspace
 
 
@@ -570,7 +570,7 @@ def main() -> None:
     args = parse_args()
     try:
         layout = resolve_workspace(args.workspace)
-    except FitnessAgentError as exc:
+    except FitnessDataBridgeError as exc:
         raise SystemExit(str(exc)) from exc
 
     apple_health_dir = layout.apple_health_dir

@@ -5,25 +5,28 @@ import hashlib
 import json
 from pathlib import Path
 import sqlite3
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
-from fitness_connector.apple_health import date_range, parse_dt
-from fitness_connector.errors import ValidationError, WriteGateError
-from fitness_connector.io import canonical_sha256
-from fitness_connector.layout import WorkspaceLayout
-from fitness_connector.publisher import dry_run_next
-from fitness_connector.publisher import _release_authorization, dry_run_release, publish_release
-from fitness_connector.release_bridge import project_release, validate_release
-from fitness_connector.session_bridge import (
+from fitness_data_bridge.apple_health import date_range, parse_dt
+from fitness_data_bridge.errors import ValidationError, WriteGateError
+from fitness_data_bridge.io import canonical_sha256
+from fitness_data_bridge.layout import WorkspaceLayout
+from fitness_data_bridge.publisher import dry_run_next
+from fitness_data_bridge.publisher import _release_authorization, dry_run_release, publish_release
+from fitness_data_bridge.release_bridge import project_release, validate_release
+from fitness_data_bridge.session_bridge import (
+    _xunji_movements,
     load_action_capabilities,
     next_scheduled_session,
     project_session,
     validate_session,
 )
-from fitness_connector.sqlite_executor import SQLitePlanExecutor
-from fitness_connector.xunji_credentials import (
+from fitness_data_bridge.synfit import launch_synfit
+from fitness_data_bridge.sqlite_executor import SQLitePlanExecutor
+from fitness_data_bridge.xunji_credentials import (
     CredentialError,
     load_credential,
     validate_credentials_file,
@@ -176,7 +179,7 @@ class WorkspaceFixture:
             root / "个人" / "数据源" / "connectors.json",
             {
                 "connector_registry_schema_version": "1.0",
-                "selected_connector": {"plugin": "fitness-connector", "version": "0.1.0"},
+                "selected_connector": {"plugin": "fitness-data-bridge", "version": "0.1.0"},
                 "defaults": {"calendar": "Workout", "start_time": "20:00"},
             },
         )
@@ -189,7 +192,7 @@ class WorkspaceFixture:
         dump(root / "当前" / "session-index-v5.json", [session()])
 
 
-class ConnectorTests(unittest.TestCase):
+class DataBridgeTests(unittest.TestCase):
     def test_next_session_is_strictly_ordered(self) -> None:
         first = session(1, "confirmed")
         later = session(2)
@@ -212,6 +215,98 @@ class ConnectorTests(unittest.TestCase):
             self.assertEqual("weight", movement["exetype"])
             self.assertEqual("40", movement["sets"][0]["weight"])
             self.assertEqual("Workout", projected["calendar_events"][0]["calendar"])
+
+    def test_dynamic_warmup_uses_xunji_repetition_only_shape(self) -> None:
+        prescription = {
+            "movements": [
+                {
+                    "action_key": "27841201",
+                    "label": "扩胸开合",
+                    "section": "dynamic_warmup",
+                    "intent": "warmup",
+                    "settings": {},
+                    "sets": [
+                        {
+                            "set_role": "warmup",
+                            "reps": 12,
+                            "load": None,
+                            "unit": "repetitions",
+                        }
+                    ],
+                }
+            ]
+        }
+        capabilities = {
+            "27841201": {
+                "key": "27841201",
+                "label": "扩胸开合",
+                "availability": {"planning_eligible": True},
+                "write_semantics": {
+                    "exetype": "plus_weight",
+                    "weight_semantics": "additional_load_kg",
+                },
+            }
+        }
+        movement = _xunji_movements(prescription, capabilities)[0]
+        self.assertEqual("", movement["exetype"])
+        self.assertEqual("", movement["note"])
+        self.assertEqual("kg", movement["sets"][0]["unit"])
+        self.assertNotIn("setType", movement["sets"][0])
+
+    def test_cooldown_defaults_to_repetition_only_with_duration_note(self) -> None:
+        prescription = {
+            "movements": [
+                {
+                    "action_key": "stretch",
+                    "section": "cooldown",
+                    "settings": {"note": "低疲劳收操"},
+                    "sets": [
+                        {
+                            "set_role": "recovery",
+                            "reps": 30,
+                            "load": None,
+                            "unit": "seconds",
+                        }
+                    ],
+                }
+            ]
+        }
+        capabilities = {
+            "stretch": {
+                "key": "stretch",
+                "label": "拉伸",
+                "availability": {"planning_eligible": True},
+                "write_semantics": {
+                    "exetype": "stretch",
+                    "weight_semantics": "duration_or_repetitions",
+                },
+            }
+        }
+        movement = _xunji_movements(prescription, capabilities)[0]
+        self.assertEqual("", movement["exetype"])
+        self.assertEqual("低疲劳收操；每组保持 30 秒", movement["note"])
+        self.assertEqual("kg", movement["sets"][0]["unit"])
+        self.assertEqual("1", movement["sets"][0]["reps"])
+        self.assertEqual(0, movement["sets"][0]["time"])
+
+    def test_synfit_is_restarted_when_already_running(self) -> None:
+        completed = subprocess.CompletedProcess([], 0, stdout="true\n")
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch("fitness_data_bridge.synfit.sys.platform", "darwin"),
+            patch("fitness_data_bridge.synfit.SYNFIT_APP", Path(directory)),
+            patch(
+                "fitness_data_bridge.synfit.subprocess.run",
+                side_effect=[completed, MagicMock(), MagicMock()],
+            ) as run,
+            patch("fitness_data_bridge.synfit.time.sleep") as sleep,
+        ):
+            launch_synfit()
+        self.assertEqual(3, run.call_count)
+        self.assertEqual("osascript", run.call_args_list[0].args[0][0])
+        self.assertIn("to quit", run.call_args_list[1].args[0][2])
+        self.assertEqual("open", run.call_args_list[2].args[0][0])
+        sleep.assert_called_once_with(2)
 
     def test_personal_capability_hash_is_enforced(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -341,20 +436,20 @@ class ConnectorTests(unittest.TestCase):
             backup.after.return_value = {"status": "captured"}
             backup.confirm.return_value = {"status": "confirmed"}
             with (
-                patch("fitness_connector.publisher.sys.platform", "darwin"),
-                patch("fitness_connector.publisher.SQLitePlanExecutor", return_value=executor),
-                patch("fitness_connector.publisher.BackupManager", return_value=backup),
-                patch("fitness_connector.publisher.launch_synfit") as launch,
+                patch("fitness_data_bridge.publisher.sys.platform", "darwin"),
+                patch("fitness_data_bridge.publisher.SQLitePlanExecutor", return_value=executor),
+                patch("fitness_data_bridge.publisher.BackupManager", return_value=backup),
+                patch("fitness_data_bridge.publisher.launch_synfit") as launch,
                 patch(
-                    "fitness_connector.publisher.wait_for_sync",
+                    "fitness_data_bridge.publisher.wait_for_sync",
                     return_value={"status": "sync_type done", "pending_ids": []},
                 ) as wait,
                 patch(
-                    "fitness_connector.publisher.write_calendar",
+                    "fitness_data_bridge.publisher.write_calendar",
                     return_value={"status": "Calendar written", "event_count": 6},
                 ) as calendar_write,
                 patch(
-                    "fitness_connector.publisher.readback_calendar",
+                    "fitness_data_bridge.publisher.readback_calendar",
                     return_value={"status": "Calendar read back", "event_count": 6},
                 ) as calendar_read,
             ):

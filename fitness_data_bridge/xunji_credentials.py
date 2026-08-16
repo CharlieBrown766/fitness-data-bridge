@@ -34,7 +34,7 @@ SLOT_PATTERNS: Final[dict[CredentialSlot, re.Pattern[str]]] = {
     "food_search": re.compile(r"^[A-Fa-f0-9]{32}$"),
     "body": re.compile(r"^xjbody_[A-Za-z0-9]+$"),
 }
-_ACCOUNT_SCOPE_DOMAIN: Final[bytes] = b"fitness-agent/xunji-account-scope/v1"
+_ACCOUNT_SCOPE_DOMAIN: Final[bytes] = b"fitness-planner/xunji-account-scope/v1"
 
 
 class CredentialError(RuntimeError):

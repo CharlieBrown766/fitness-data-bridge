@@ -1,7 +1,7 @@
 > Created time: 2026-08-16 09:48
-> Modified time: 2026-08-16 10:51
+> Modified time: 2026-08-16 12:00
 
-# Fitness Connector runtime contract
+# Fitness Data Bridge runtime contract
 
 - This installed plugin owns only the Xunji, SynFit, Apple Calendar and Apple Health adapters.
 - Read Fitness v5 sessions and personal-data bindings from the selected Fitness workspace; never choose or revise training content.

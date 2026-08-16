@@ -1,7 +1,7 @@
 > Created time: 2026-08-16 00:51
-> Modified time: 2026-08-16 10:51
+> Modified time: 2026-08-16 12:00
 
-# Fitness Connector development contract
+# Fitness Data Bridge development contract
 
 - This repository owns application adapters only: Xunji, SynFit, Apple Calendar and Apple Health.
 - It consumes Fitness v5 sessions and workspace personal-data bindings; it does not choose training content or duplicate generic Fitness rules.

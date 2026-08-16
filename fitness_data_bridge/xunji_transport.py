@@ -93,7 +93,7 @@ def post_json(
     body: dict[str, Any],
     credential: str,
     timeout: float = 30.0,
-    user_agent: str = "fitness-agent-xunji-open-api/1.0",
+    user_agent: str = "fitness-planner-xunji-open-api/1.0",
     success_required: bool = False,
 ) -> HttpResponse:
     request = Request(

@@ -27,11 +27,11 @@ class WorkspaceLayout:
 
     @property
     def logs_dir(self) -> Path:
-        return self.runtime_dir / "logs" / "fitness-connector"
+        return self.runtime_dir / "logs" / "fitness-data-bridge"
 
     @property
     def receipts_dir(self) -> Path:
-        return self.runtime_dir / "receipts" / "connector"
+        return self.runtime_dir / "receipts" / "data-bridge"
 
     @property
     def apple_health_dir(self) -> Path:

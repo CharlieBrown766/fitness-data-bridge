@@ -244,7 +244,7 @@ def build_request_body(
 def post_upsert(body: dict, api_key: str, timeout: float) -> dict:
     if body.get("dry_run") is not True:
         raise XunjiError(
-            "Real training API writes are disabled in Fitness Agent 0.8.6; "
+            "Real training API writes are disabled in Fitness Planner 0.8.6; "
             "only dry_run=true may reach the official upsert endpoint"
         )
     try:
@@ -441,7 +441,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.write:
             raise WriteGateError(
-                "Real training API writes are disabled in Fitness Agent 0.8.6. "
+                "Real training API writes are disabled in Fitness Planner 0.8.6. "
                 "The active profile has no executable artifact-to-Open-API "
                 "projection, and the protected Phase2 is read-only."
             )

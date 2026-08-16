@@ -21,7 +21,7 @@ from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .backup import discover_xunji_database
-from .errors import FitnessAgentError
+from .errors import FitnessDataBridgeError
 from .layout import resolve_workspace
 
 
@@ -40,7 +40,7 @@ PLUGIN_ROOT = SCRIPT_PATH.parent.parent
 FITNESS_ROOT = Path.cwd()
 CACHE_DIR = FITNESS_ROOT / "事实" / "训练" / "xunji" / "mac_student_facts"
 RAW_CACHE_DIR = FITNESS_ROOT / "运行" / "cache" / "xunji" / "mac_localtrains"
-LOG_PATH = FITNESS_ROOT / "运行" / "logs" / "fitness-agent" / "weekly_training_refresh.log"
+LOG_PATH = FITNESS_ROOT / "运行" / "logs" / "fitness-planner" / "weekly_training_refresh.log"
 SYNC_DOC = PLUGIN_ROOT / "skills" / "fitness-ops" / "references" / "operations.md"
 SYNFIT_APP = Path("/Applications/SynFit.app")
 REQUIRED_LOCALTRAINS_COLUMNS = {
@@ -74,7 +74,7 @@ def configure_workspace(value: str | Path | None) -> None:
     global FITNESS_ROOT, CACHE_DIR, RAW_CACHE_DIR, LOG_PATH
     try:
         layout = resolve_workspace(value)
-    except FitnessAgentError as exc:
+    except FitnessDataBridgeError as exc:
         raise RefreshError(str(exc)) from exc
     FITNESS_ROOT = layout.root
     CACHE_DIR = layout.training_facts_dir
@@ -174,7 +174,7 @@ def markdown_with_metadata(path: Path, body: str) -> str:
 def find_db_candidates() -> list[Path]:
     try:
         return [discover_xunji_database()]
-    except FitnessAgentError:
+    except FitnessDataBridgeError:
         return []
 
 

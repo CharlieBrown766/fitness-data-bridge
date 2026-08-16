@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a deterministic, privacy-scanned Fitness Connector release."""
+"""Build a deterministic, privacy-scanned Fitness Data Bridge release."""
 
 from __future__ import annotations
 
@@ -15,13 +15,13 @@ import sys
 import zipfile
 
 
-PLUGIN = "fitness-connector"
-VERSION = "0.2.0"
-MARKETPLACE = "fitness-connector"
+PLUGIN = "fitness-data-bridge"
+VERSION = "1.0.0"
+MARKETPLACE = "fitness-data-bridge"
 PUBLIC_DIRECTORIES = (
     ".codex-plugin",
     "assets",
-    "fitness_connector",
+    "fitness_data_bridge",
     "scripts",
     "skills",
 )
@@ -209,7 +209,7 @@ def build(args: argparse.Namespace) -> dict:
         "marketplace": MARKETPLACE,
         "plugin": PLUGIN,
         "version": VERSION,
-        "requires": ["fitness-agent>=1.1.0"],
+        "requires": ["fitness-planner>=2.0.0"],
     }:
         raise BuildError("Compatibility template does not match the release identity.")
 
@@ -218,7 +218,7 @@ def build(args: argparse.Namespace) -> dict:
     else:
         development_root = plugin_root.parent
         if development_root.name != "development":
-            raise BuildError("Default output requires <AgentRoot>/development/fitness-connector.")
+            raise BuildError("Default output requires <AgentRoot>/development/fitness-data-bridge.")
         output_root = development_root.parent / "releases" / PLUGIN / VERSION
     try:
         output_root.relative_to(plugin_root)

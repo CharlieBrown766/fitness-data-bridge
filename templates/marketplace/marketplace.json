@@ -1,14 +1,14 @@
 {
-  "name": "fitness-connector",
+  "name": "fitness-data-bridge",
   "interface": {
-    "displayName": "Fitness Connector"
+    "displayName": "Fitness Data Bridge"
   },
   "plugins": [
     {
-      "name": "fitness-connector",
+      "name": "fitness-data-bridge",
       "source": {
         "source": "local",
-        "path": "./plugins/fitness-connector"
+        "path": "./plugins/fitness-data-bridge"
       },
       "policy": {
         "installation": "AVAILABLE",

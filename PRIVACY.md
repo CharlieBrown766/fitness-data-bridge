@@ -1,9 +1,9 @@
 > Created time: 2026-08-16 00:51
-> Modified time: 2026-08-16 00:51
+> Modified time: 2026-08-16 12:00
 
 # Privacy
 
-Fitness Connector code is separate from personal Fitness data.
+Fitness Data Bridge code is separate from personal Fitness data.
 
 Personal credentials belong in `运行/private/credentials.json`. API caches, local database snapshots, logs and receipts belong under `运行/`; training and health facts belong under `事实/`. Apple Health exports and Xunji records must not be copied into this plugin.
 

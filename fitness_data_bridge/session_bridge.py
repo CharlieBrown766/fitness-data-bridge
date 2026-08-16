@@ -50,8 +50,8 @@ def load_connector_registry(layout: WorkspaceLayout) -> dict[str, Any]:
     value = load_json(path)
     if not isinstance(value, dict) or value.get("connector_registry_schema_version") != "1.0":
         raise ValidationError("Unsupported connector registry")
-    if value.get("selected_connector", {}).get("plugin") != "fitness-connector":
-        raise ValidationError("fitness-connector is not the selected connector")
+    if value.get("selected_connector", {}).get("plugin") != "fitness-data-bridge":
+        raise ValidationError("fitness-data-bridge is not the selected connector")
     return value
 
 
@@ -138,24 +138,34 @@ def _number(value: Any) -> str:
     return str(value)
 
 
-def _target_set(value: Any) -> dict[str, Any]:
+def _target_set(value: Any, *, movement_section: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValidationError("Movement set must be an object")
     reps = value.get("reps")
     if reps is None:
         raise ValidationError("Movement set is missing reps")
     load = value.get("load")
+    source_unit = str(value.get("unit") or "kg")
+    repetition_only = movement_section in {"dynamic_warmup", "cooldown"}
     result = {
+        # This is Xunji's internal no-weight-field flag. It does not select
+        # the user-facing "自身加重" record type when exetype is empty.
         "selfWeight": load is None,
-        "unit": str(value.get("unit") or "kg"),
-        "reps": _number(reps),
+        # Xunji uses kg as the storage sentinel for repetition-only records.
+        # Writing rule-model units such as
+        # "repetitions" makes the app render internal text like
+        # "+repetitions" in the weight control.
+        "unit": "kg",
+        "reps": "1" if source_unit == "seconds" else _number(reps),
         "weight": _number(load),
         "done": False,
         "user_rep": True,
         "user_weight": load is not None,
-        "time": 0,
+        "time": reps if source_unit == "seconds" and not repetition_only else 0,
     }
-    if value.get("set_role") == "warmup":
+    # A dedicated dynamic-warmup movement is a normal unloaded action in
+    # Xunji. setType=热 is reserved for warm-up sets nested in a main lift.
+    if movement_section == "main" and value.get("set_role") == "warmup":
         result["setType"] = "热"
     return result
 
@@ -190,14 +200,41 @@ def _xunji_movements(
         if not isinstance(sets, list) or not sets:
             raise ValidationError(f"Action has no prescribed sets: {key}")
         settings = movement.get("settings") if isinstance(movement.get("settings"), dict) else {}
+        projected_sets = [
+            _target_set(item, movement_section=str(movement.get("section") or ""))
+            for item in sets
+        ]
+        movement_section = str(movement.get("section") or "")
+        exetype = str(semantics.get("exetype", ""))
+        if movement_section in {"dynamic_warmup", "cooldown"}:
+            exetype = ""
+        elif exetype in {"plus_weight", "times"} and all(
+            item.get("load") is None for item in sets if isinstance(item, dict)
+        ):
+            exetype = ""
+        note = str(settings.get("note") or "")
+        if movement_section in {"dynamic_warmup", "cooldown"}:
+            seconds = sorted(
+                {
+                    _number(item.get("reps"))
+                    for item in sets
+                    if isinstance(item, dict) and item.get("unit") == "seconds"
+                }
+            )
+            if seconds:
+                duration_note = f"每组保持 {'/'.join(seconds)} 秒"
+                note = f"{note}；{duration_note}" if note else duration_note
         result.append(
             {
                 "key": key,
-                "sets": [_target_set(item) for item in sets],
+                "sets": projected_sets,
                 "type": str(settings.get("xunji_type", "")),
-                "exetype": str(semantics.get("exetype", "")),
+                "exetype": exetype,
                 "label": str(capability.get("label") or movement.get("label") or key),
-                "note": str(settings.get("note") or movement.get("intent") or ""),
+                # intent is an internal planning field, not a user-facing
+                # Xunji note. Only explicit or translated instructions are
+                # exported.
+                "note": note,
             }
         )
     return result

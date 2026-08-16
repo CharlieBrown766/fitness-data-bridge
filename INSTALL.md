@@ -1,9 +1,9 @@
 > Created time: 2026-08-16 00:51
-> Modified time: 2026-08-16 10:51
+> Modified time: 2026-08-16 12:00
 
 # Installation
 
-Install from the public release package, not from the development source. The release contains a dedicated `fitness-connector` marketplace, checksum manifest and privacy-scanned runtime payload.
+Install from the public release package, not from the development source. The release contains a dedicated `fitness-data-bridge` marketplace, checksum manifest and privacy-scanned runtime payload.
 
 Runtime requirements are Python 3.11 or newer and `tzdata` on Windows. Live Xunji SQLite, SynFit and Apple Calendar publication must run on the target Mac; Windows supports workspace validation, API operations, Apple Health parsing and projection dry-runs.
 
@@ -15,12 +15,18 @@ Build and verify the release:
 python tools\build-public-package.py
 ```
 
-After extracting `fitness-connector-0.2.0-public.zip`, install its marketplace and plugin:
+After extracting `fitness-data-bridge-1.0.0-public.zip`, install its marketplace and plugin:
 
 ```powershell
 codex plugin marketplace add <extracted-release-root> --json
-codex plugin add fitness-connector@fitness-connector --json
-codex plugin list --marketplace fitness-connector --json
+codex plugin add fitness-data-bridge@fitness-data-bridge --json
+codex plugin list --marketplace fitness-data-bridge --json
 ```
 
-Install Fitness Agent 1.1.0 first. Start a new Codex task after installation because existing tasks retain the plugin snapshot loaded at task start.
+Install Fitness Planner 2.0.0 first. Start a new Codex task after installation because existing tasks retain the plugin snapshot loaded at task start.
+
+After the new plugin passes verification, remove the legacy
+`fitness-connector@fitness-connector` registration and change the active
+workspace `个人/数据源/connectors.json` selection from `fitness-connector` to
+`fitness-data-bridge`. Historical receipts remain unchanged; new receipts use
+`运行/receipts/data-bridge/`.

@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "marketplace": "fitness-connector",
-  "plugin": "fitness-connector",
-  "version": "0.2.0",
+  "marketplace": "fitness-data-bridge",
+  "plugin": "fitness-data-bridge",
+  "version": "1.0.0",
   "requires": [
-    "fitness-agent>=1.1.0"
+    "fitness-planner>=2.0.0"
   ]
 }

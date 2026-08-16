@@ -31,7 +31,7 @@ class PublicPackageTests(unittest.TestCase):
             self.assertEqual(0, completed.returncode, completed.stdout + completed.stderr)
             result = json.loads(completed.stdout)
             release_root = Path(result["release_root"])
-            plugin_root = release_root / "plugins" / "fitness-connector"
+            plugin_root = release_root / "plugins" / "fitness-data-bridge"
             self.assertFalse((plugin_root / "tests").exists())
             self.assertFalse((plugin_root / "tools").exists())
             self.assertFalse((plugin_root / ".git").exists())

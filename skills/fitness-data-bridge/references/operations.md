@@ -1,11 +1,11 @@
 > Created time: 2026-08-16 00:51
-> Modified time: 2026-08-16 10:51
+> Modified time: 2026-08-16 12:00
 
 # Operations
 
 ## Preview half-Block release
 
-Run `scripts/fitness_connector_release.py --workspace <Fitness> --release <workspace-relative-release.json>`. Add `--database <Xunji.db>` only on a device with a safe local read-only target. The default output is one complete batch projection and performs no live write.
+Run `scripts/fitness_data_bridge_release.py --workspace <Fitness> --release <workspace-relative-release.json>`. Add `--database <Xunji.db>` only on a device with a safe local read-only target. The default output is one complete batch projection and performs no live write.
 
 ## Publish half-Block release
 
@@ -15,7 +15,7 @@ All strength sessions are written in one Xunji transaction, SynFit is launched o
 
 ## Legacy next-session compatibility
 
-Run `scripts/fitness_connector_session.py --workspace <Fitness>`. Add `--database <Xunji.db>` only on a device with a safe local read-only target. The default output is a projection and performs no live write.
+Run `scripts/fitness_data_bridge_session.py --workspace <Fitness>`. Add `--database <Xunji.db>` only on a device with a safe local read-only target. The default output is a projection and performs no live write.
 
 ## Legacy publish next session
 
@@ -34,7 +34,7 @@ Live publication requires `--write --authorization <file>` on the target Mac. Th
 }
 ```
 
-Strength sessions are written to Xunji SQLite, synchronized through SynFit and published to Apple Calendar. Cardio and recovery sessions publish only their Calendar event. Receipts are stored under `运行/receipts/connector/`. A partial failure retains before/after snapshots and writes a partial receipt; do not retry it as a fresh write.
+Strength sessions are written to Xunji SQLite, synchronized through SynFit and published to Apple Calendar. Cardio and recovery sessions publish only their Calendar event. Receipts are stored under `运行/receipts/data-bridge/`. A partial failure retains before/after snapshots and writes a partial receipt; do not retry it as a fresh write.
 
 ## Xunji API and facts
 
@@ -42,4 +42,4 @@ Use the narrow module entrypoint matching the requested domain: `xunji_client`, 
 
 ## Apple Health
 
-Use `python -m fitness_connector.apple_health --workspace <Fitness> ...`. Raw exports land in `事实/体况/apple-health/raw/`; parsed outputs land in `事实/体况/apple-health/parsed/`.
+Use `python -m fitness_data_bridge.apple_health --workspace <Fitness> ...`. Raw exports land in `事实/体况/apple-health/raw/`; parsed outputs land in `事实/体况/apple-health/parsed/`.

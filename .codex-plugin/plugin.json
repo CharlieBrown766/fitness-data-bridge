@@ -1,15 +1,15 @@
 {
-  "name": "fitness-connector",
-  "version": "0.2.0",
-  "description": "Private connectors for a workspace-owned Fitness database.",
+  "name": "fitness-data-bridge",
+  "version": "1.0.0",
+  "description": "Private application bridge for a workspace-owned Fitness database.",
   "author": {
     "name": "Workspace Maintainer"
   },
   "skills": "./skills/",
   "interface": {
-    "displayName": "Fitness Connector",
-    "shortDescription": "Connect Fitness data and apps",
-    "longDescription": "Fitness Connector reads and writes the workspace-owned Fitness database through bounded adapters for Xunji, SynFit, Apple Calendar, and Apple Health. It consumes governed Fitness v5 sessions but does not own training rules or personal records.",
+    "displayName": "Fitness Data Bridge",
+    "shortDescription": "Bridge Fitness data and apps",
+    "longDescription": "Fitness Data Bridge reads and writes the workspace-owned Fitness database through bounded adapters for Xunji, SynFit, Apple Calendar, and Apple Health. It consumes governed Fitness v5 sessions but does not own training rules or personal records.",
     "developerName": "Workspace Maintainer",
     "category": "Productivity",
     "capabilities": [
@@ -18,14 +18,14 @@
       "Apple Calendar",
       "Apple Health Import"
     ],
-    "websiteURL": "https://github.com/CharlieBrown766/fitness-connector",
-    "privacyPolicyURL": "https://github.com/CharlieBrown766/fitness-connector/blob/main/PRIVACY.md",
-    "termsOfServiceURL": "https://github.com/CharlieBrown766/fitness-connector/blob/main/TERMS.md",
+    "websiteURL": "https://github.com/CharlieBrown766/fitness-data-bridge",
+    "privacyPolicyURL": "https://github.com/CharlieBrown766/fitness-data-bridge/blob/main/PRIVACY.md",
+    "termsOfServiceURL": "https://github.com/CharlieBrown766/fitness-data-bridge/blob/main/TERMS.md",
     "composerIcon": "./assets/icon.png",
     "logo": "./assets/icon.png",
     "defaultPrompt": [
-      "Use $fitness-connector to preview or publish one confirmed Fitness v5.1 half-Block release as a unified batch",
-      "Use $fitness-connector to refresh Xunji or Apple Health facts into my Fitness workspace"
+      "Use $fitness-data-bridge to preview or publish one confirmed Fitness v5.1 half-Block release as a unified batch",
+      "Use $fitness-data-bridge to refresh Xunji or Apple Health facts into my Fitness workspace"
     ]
   }
 }
