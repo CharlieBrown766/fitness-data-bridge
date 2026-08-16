@@ -1,13 +1,23 @@
 > Created time: 2026-08-16 00:51
-> Modified time: 2026-08-16 00:51
+> Modified time: 2026-08-16 10:51
 
 # Operations
 
-## Preview next session
+## Preview half-Block release
+
+Run `scripts/fitness_connector_release.py --workspace <Fitness> --release <workspace-relative-release.json>`. Add `--database <Xunji.db>` only on a device with a safe local read-only target. The default output is one complete batch projection and performs no live write.
+
+## Publish half-Block release
+
+Live publication requires `--write --authorization <file>` on the target Mac. The schema-2.0 authorization binds `phase_id`, `block_id`, `release_id`, `revision`, `release_sha256`, the ordered `session_ids`, the exact `replacement_window`, `confirmed: true`, `one_time: true`, and a timezone-aware `expires_at`.
+
+All strength sessions are written in one Xunji transaction, SynFit is launched once, and all release events are written to Calendar in one batch. Database and Calendar are read back as one release before one receipt is finalized. Do not invoke the legacy session route repeatedly.
+
+## Legacy next-session compatibility
 
 Run `scripts/fitness_connector_session.py --workspace <Fitness>`. Add `--database <Xunji.db>` only on a device with a safe local read-only target. The default output is a projection and performs no live write.
 
-## Publish next session
+## Legacy publish next session
 
 Live publication requires `--write --authorization <file>` on the target Mac. The authorization JSON must contain exactly:
 

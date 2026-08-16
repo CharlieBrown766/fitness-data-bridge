@@ -7,12 +7,15 @@ from pathlib import Path
 import sqlite3
 import tempfile
 import unittest
+from unittest.mock import MagicMock, patch
 
 from fitness_connector.apple_health import date_range, parse_dt
 from fitness_connector.errors import ValidationError, WriteGateError
 from fitness_connector.io import canonical_sha256
 from fitness_connector.layout import WorkspaceLayout
 from fitness_connector.publisher import dry_run_next
+from fitness_connector.publisher import _release_authorization, dry_run_release, publish_release
+from fitness_connector.release_bridge import project_release, validate_release
 from fitness_connector.session_bridge import (
     load_action_capabilities,
     next_scheduled_session,
@@ -80,6 +83,65 @@ def session(sequence: int = 1, state: str = "scheduled") -> dict:
     }
 
 
+def half_block_release() -> dict:
+    sessions = []
+    sequence = 0
+    for position in ("A1", "B1"):
+        for slot in ("Push", "Pull", "Legs"):
+            sequence += 1
+            value = session(sequence)
+            value["session_id"] = f"{position.lower()}-{slot.lower()}"
+            value["schedule"]["scheduled_for"] = f"2026-08-{19 + sequence:02d}"
+            value["prescription"] = {
+                "title": f"{position} {slot}",
+                "cycle_position": position,
+                "slot": slot,
+                "estimated_minutes": 90,
+                "movements": [
+                    {
+                        "action_key": "benchpress",
+                        "label": "杠铃卧推",
+                        "section": "main",
+                        "intent": "volume",
+                        "settings": {},
+                        "sets": [
+                            {
+                                "set_role": "effective",
+                                "reps": 8,
+                                "load": 40,
+                                "unit": "kg",
+                                "rir": 3,
+                                "rpe": None,
+                            }
+                        ],
+                        "load_basis": {
+                            "kind": "comparable",
+                            "evidence_refs": ["record:benchpress-2026-08-01"],
+                            "comparison_signature": "benchpress:barbell:8reps:first",
+                        },
+                    }
+                ],
+            }
+            value["prescription_sha256"] = canonical_sha256(value["prescription"])
+            sessions.append(value)
+    return {
+        "half_block_release_schema_version": "5.1",
+        "training_rule_schema_version": 5,
+        "phase_id": "phase-1",
+        "block_id": "block-1",
+        "release_id": "first_half",
+        "revision": 1,
+        "status": "confirmed",
+        "cycle_positions": ["A1", "B1"],
+        "evidence_refs": ["facts:2026-08-16"],
+        "basis": {
+            "phase_path": "当前/phase.json",
+            "block_path": "当前/block.json",
+            "previous_release_path": None,
+            "midpoint_review_path": None,
+        },
+        "sessions": sessions,
+    }
 class WorkspaceFixture:
     def __init__(self, root: Path):
         self.root = root
@@ -166,6 +228,148 @@ class ConnectorTests(unittest.TestCase):
             self.assertEqual("dry-run passed", result["status"])
             self.assertFalse(result["live_write_performed"])
             self.assertEqual("projection only", result["database"]["status"])
+
+    def test_half_block_projects_all_sessions_as_one_batch(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = WorkspaceFixture(Path(directory))
+            release = half_block_release()
+            projection = project_release(
+                validate_release(release), layout=WorkspaceLayout(fixture.root)
+            )
+            self.assertEqual("2.0", projection["connector_contract_version"])
+            self.assertEqual(6, len(projection["app_records"]))
+            self.assertEqual(6, len(projection["calendar_events"]))
+            self.assertEqual(
+                [item["session_id"] for item in release["sessions"]],
+                projection["source"]["session_ids"],
+            )
+            self.assertEqual("2026-08-20", projection["replacement_window"]["start"])
+            self.assertEqual("2026-08-25", projection["replacement_window"]["end"])
+
+    def test_half_block_rejects_silent_empty_comparable_weight(self) -> None:
+        release = half_block_release()
+        movement = release["sessions"][0]["prescription"]["movements"][0]
+        movement["sets"][0]["load"] = None
+        release["sessions"][0]["prescription_sha256"] = canonical_sha256(
+            release["sessions"][0]["prescription"]
+        )
+        with self.assertRaisesRegex(WriteGateError, "numeric loads"):
+            validate_release(release)
+
+    def test_release_dry_run_and_authorization_bind_the_whole_revision(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = WorkspaceFixture(Path(directory))
+            release = half_block_release()
+            release_path = fixture.root / "当前" / "first-half-r01.json"
+            dump(release_path, release)
+            result = dry_run_release(fixture.root, release_path=release_path)
+            self.assertEqual("dry-run passed", result["status"])
+            self.assertEqual(6, result["release"]["session_count"])
+            authorization = {
+                "authorization_schema_version": "2.0",
+                "operation": "publish_half_block_release",
+                "phase_id": release["phase_id"],
+                "block_id": release["block_id"],
+                "release_id": release["release_id"],
+                "revision": release["revision"],
+                "release_sha256": result["projection"]["source"]["release_sha256"],
+                "session_ids": result["projection"]["source"]["session_ids"],
+                "replacement_window": result["projection"]["replacement_window"],
+                "confirmed": True,
+                "one_time": True,
+                "expires_at": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
+            }
+            auth_path = fixture.root / "运行" / "authorization.json"
+            dump(auth_path, authorization)
+            layout = WorkspaceLayout(fixture.root)
+            self.assertEqual(
+                "2.0",
+                _release_authorization(
+                    auth_path,
+                    release=release,
+                    projection=result["projection"],
+                    layout=layout,
+                )[0]["authorization_schema_version"],
+            )
+            authorization["session_ids"] = authorization["session_ids"][:-1]
+            dump(auth_path, authorization)
+            with self.assertRaisesRegex(WriteGateError, "session_ids"):
+                _release_authorization(
+                    auth_path,
+                    release=release,
+                    projection=result["projection"],
+                    layout=layout,
+                )
+
+    def test_release_publication_launches_synfit_once_for_the_batch(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = WorkspaceFixture(Path(directory))
+            release = half_block_release()
+            release_path = fixture.root / "当前" / "first-half-r01.json"
+            dump(release_path, release)
+            preview = dry_run_release(fixture.root, release_path=release_path)
+            authorization = {
+                "authorization_schema_version": "2.0",
+                "operation": "publish_half_block_release",
+                "phase_id": release["phase_id"],
+                "block_id": release["block_id"],
+                "release_id": release["release_id"],
+                "revision": release["revision"],
+                "release_sha256": preview["projection"]["source"]["release_sha256"],
+                "session_ids": preview["projection"]["source"]["session_ids"],
+                "replacement_window": preview["projection"]["replacement_window"],
+                "confirmed": True,
+                "one_time": True,
+                "expires_at": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
+            }
+            auth_path = fixture.root / "运行" / "authorization.json"
+            dump(auth_path, authorization)
+            executor = MagicMock()
+            executor.dry_run.return_value = {"status": "dry-run passed"}
+            executor.write.return_value = {
+                "status": "DB written",
+                "soft_deleted_ids": [],
+                "inserted_ids": [101, 102, 103, 104, 105, 106],
+            }
+            executor.readback.return_value = {
+                "status": "DB read back",
+                "active_not_sync": [],
+            }
+            backup = MagicMock()
+            backup.before.return_value = "operation-1"
+            backup.pending_before_matches_source.return_value = True
+            backup.after.return_value = {"status": "captured"}
+            backup.confirm.return_value = {"status": "confirmed"}
+            with (
+                patch("fitness_connector.publisher.sys.platform", "darwin"),
+                patch("fitness_connector.publisher.SQLitePlanExecutor", return_value=executor),
+                patch("fitness_connector.publisher.BackupManager", return_value=backup),
+                patch("fitness_connector.publisher.launch_synfit") as launch,
+                patch(
+                    "fitness_connector.publisher.wait_for_sync",
+                    return_value={"status": "sync_type done", "pending_ids": []},
+                ) as wait,
+                patch(
+                    "fitness_connector.publisher.write_calendar",
+                    return_value={"status": "Calendar written", "event_count": 6},
+                ) as calendar_write,
+                patch(
+                    "fitness_connector.publisher.readback_calendar",
+                    return_value={"status": "Calendar read back", "event_count": 6},
+                ) as calendar_read,
+            ):
+                receipt = publish_release(
+                    fixture.root,
+                    release_path=release_path,
+                    authorization_path=auth_path,
+                    database=fixture.root / "Xunji.db",
+                )
+            self.assertEqual("succeeded", receipt["status"])
+            launch.assert_called_once_with()
+            wait.assert_called_once()
+            executor.write.assert_called_once()
+            calendar_write.assert_called_once()
+            calendar_read.assert_called_once()
 
     def test_sqlite_dry_run_blocks_completed_replacement(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

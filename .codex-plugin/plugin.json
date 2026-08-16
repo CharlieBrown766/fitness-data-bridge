@@ -1,6 +1,6 @@
 {
   "name": "fitness-connector",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Private connectors for a workspace-owned Fitness database.",
   "author": {
     "name": "Workspace Maintainer"
@@ -24,7 +24,7 @@
     "composerIcon": "./assets/icon.png",
     "logo": "./assets/icon.png",
     "defaultPrompt": [
-      "Use $fitness-connector to preview the next scheduled Fitness v5 session",
+      "Use $fitness-connector to preview or publish one confirmed Fitness v5.1 half-Block release as a unified batch",
       "Use $fitness-connector to refresh Xunji or Apple Health facts into my Fitness workspace"
     ]
   }

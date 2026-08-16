@@ -16,7 +16,7 @@ import zipfile
 
 
 PLUGIN = "fitness-connector"
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 MARKETPLACE = "fitness-connector"
 PUBLIC_DIRECTORIES = (
     ".codex-plugin",
@@ -209,7 +209,7 @@ def build(args: argparse.Namespace) -> dict:
         "marketplace": MARKETPLACE,
         "plugin": PLUGIN,
         "version": VERSION,
-        "requires": ["fitness-agent>=1.0.0"],
+        "requires": ["fitness-agent>=1.1.0"],
     }:
         raise BuildError("Compatibility template does not match the release identity.")
 

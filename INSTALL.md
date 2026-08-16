@@ -1,5 +1,5 @@
 > Created time: 2026-08-16 00:51
-> Modified time: 2026-08-16 09:48
+> Modified time: 2026-08-16 10:51
 
 # Installation
 
@@ -15,7 +15,7 @@ Build and verify the release:
 python tools\build-public-package.py
 ```
 
-After extracting `fitness-connector-0.1.0-public.zip`, install its marketplace and plugin:
+After extracting `fitness-connector-0.2.0-public.zip`, install its marketplace and plugin:
 
 ```powershell
 codex plugin marketplace add <extracted-release-root> --json
@@ -23,4 +23,4 @@ codex plugin add fitness-connector@fitness-connector --json
 codex plugin list --marketplace fitness-connector --json
 ```
 
-Install Fitness Agent 1.0.0 first. Start a new Codex task after installation because existing tasks retain the plugin snapshot loaded at task start.
+Install Fitness Agent 1.1.0 first. Start a new Codex task after installation because existing tasks retain the plugin snapshot loaded at task start.

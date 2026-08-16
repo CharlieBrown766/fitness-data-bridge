@@ -208,6 +208,7 @@ def project_session(
     *,
     layout: WorkspaceLayout,
     registry: dict[str, Any] | None = None,
+    capabilities: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     validate_session(session)
     if session["schedule"]["state"] != "scheduled":
@@ -233,7 +234,8 @@ def project_session(
                 "category": "main",
                 "note": notes,
                 "movements": _xunji_movements(
-                    session["prescription"], load_action_capabilities(layout)
+                    session["prescription"],
+                    capabilities or load_action_capabilities(layout),
                 ),
             }
         ]
