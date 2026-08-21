@@ -1,5 +1,5 @@
 > Created time: 2026-08-16 00:51
-> Modified time: 2026-08-16 12:00
+> Modified time: 2026-08-21 10:45
 
 # Fitness Data Bridge development contract
 
@@ -9,3 +9,10 @@
 - All external writes default to dry-run. Live plan publication accepts one confirmed, hash-valid half-Block release revision containing all scheduled A1+B1 or A2+B2 sessions. It requires one matching authorization, target-Mac execution, one backup-before, one Xunji transaction, one SynFit launch, one Calendar batch and one unified readback/receipt. The legacy single-session route remains compatibility-only.
 - Do not install, publish, release or perform a live external write without the user's explicit request.
 - Markdown files preserve `Created time`; update `Modified time` in Asia/Shanghai.
+- A component Release may build and validate Fitness Data Bridge as a Shujian
+  Agent input, but must not install it into the developer's real `CODEX_HOME`.
+  “Delivery”, “交付”, or a request to update the current Codex routes to
+  `<AgentRoot>/development/shujian-agent/.agents/skills/release-delivery/SKILL.md`.
+  Its standalone installation instructions are restricted to an isolated
+  temporary `CODEX_HOME` and must not create a `fitness-data-bridge`
+  marketplace in the developer environment.
