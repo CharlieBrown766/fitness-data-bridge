@@ -16,7 +16,7 @@ import zipfile
 
 
 PLUGIN = "fitness-data-bridge"
-VERSION = "1.0.0"
+VERSION = "1.0.5"
 MARKETPLACE = "fitness-data-bridge"
 PUBLIC_DIRECTORIES = (
     ".codex-plugin",
@@ -155,6 +155,7 @@ def run_validator(python: str, validator: Path, target: Path, label: str) -> Non
         text=True,
         encoding="utf-8",
         errors="replace",
+        env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
     )
     if completed.returncode:
         detail = (completed.stdout + completed.stderr).strip()
@@ -209,7 +210,7 @@ def build(args: argparse.Namespace) -> dict:
         "marketplace": MARKETPLACE,
         "plugin": PLUGIN,
         "version": VERSION,
-        "requires": ["fitness-planner>=2.0.0"],
+        "requires": ["fitness-planner>=2.0.4"],
     }:
         raise BuildError("Compatibility template does not match the release identity.")
 

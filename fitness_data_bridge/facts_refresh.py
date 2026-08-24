@@ -38,7 +38,7 @@ TZ = resolve_timezone()
 SCRIPT_PATH = Path(__file__).resolve()
 PLUGIN_ROOT = SCRIPT_PATH.parent.parent
 FITNESS_ROOT = Path.cwd()
-CACHE_DIR = FITNESS_ROOT / "事实" / "训练" / "xunji" / "mac_student_facts"
+CACHE_DIR = FITNESS_ROOT / "数据" / "训练" / "xunji" / "mac_student_facts"
 RAW_CACHE_DIR = FITNESS_ROOT / "运行" / "cache" / "xunji" / "mac_localtrains"
 LOG_PATH = FITNESS_ROOT / "运行" / "logs" / "fitness-planner" / "weekly_training_refresh.log"
 SYNC_DOC = PLUGIN_ROOT / "skills" / "fitness-ops" / "references" / "operations.md"
@@ -121,7 +121,7 @@ def parse_date(value: str) -> date:
 def ensure_fitness_root() -> None:
     if sys.platform != "darwin":
         raise RefreshError("Mac-local Xunji refresh requires macOS and SynFit.app.")
-    if not (FITNESS_ROOT / "当前" / "state.yml").is_file() or not (FITNESS_ROOT / "AGENTS.md").is_file():
+    if not resolve_workspace(FITNESS_ROOT).state_file.is_file() or not (FITNESS_ROOT / "AGENTS.md").is_file():
         raise RefreshError(f"无效 Fitness 工作区: {FITNESS_ROOT}")
     os.chdir(FITNESS_ROOT)
 

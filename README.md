@@ -1,5 +1,5 @@
 > Created time: 2026-08-16 00:51
-> Modified time: 2026-08-16 12:00
+> Modified time: 2026-08-25 02:18
 
 # Fitness Data Bridge
 
@@ -10,14 +10,17 @@ It provides:
 - Xunji training, food and body-data clients, cache controls and credential slots;
 - Xunji local SQLite publication with completed-record protection and exact readback;
 - SynFit refresh launch and bounded synchronization polling on the target Mac; an already-running SynFit instance is restarted once before polling so a no-op `open` cannot leave new rows pending;
-- Apple Calendar scoped write and independent readback;
+- Apple Calendar scoped write through EventKit with exact wall-clock reminders,
+  per-event default-alert removal, readable prescription summaries and
+  independent event-plus-reminder-plus-notes readback that also verifies the
+  per-event default-alert suppression state;
 - Apple Health export staging and parsing into workspace facts;
 - a v5.1 half-Block bridge that publishes all A1+B1 or A2+B2 sessions in one transaction/synchronization/Calendar/readback boundary;
 - a legacy next-session route retained only for compatibility.
 
 The Xunji adapter translates rule-model units into Xunji's native storage shape. Warm-up and cooldown movements default to Xunji's repetition-only record type; internal values such as `repetitions`, `warmup`, and planning intent labels are not written into user-facing weight or note fields.
 
-The plugin contains no personal records or credentials. `fitness-planner` remains the owner of generic rules and validators; the Fitness workspace remains the owner of personal intent, capabilities, plans, facts and runtime data.
+The plugin contains no personal records or credentials. `fitness-planner` remains the owner of generic rules and validators; the Fitness workspace remains the owner of user intent, capabilities, plans, formal data and runtime material. Canonical workspace paths are `用户/数据接入/`, `数据/`, `状态/`, `计划/`, and `运行/`.
 
 See [PRIVACY.md](PRIVACY.md), [TERMS.md](TERMS.md), and [SUPPORT.md](SUPPORT.md).
 

@@ -9,9 +9,25 @@ from pathlib import Path
 from .errors import ValidationError
 
 
+CANONICAL_STATE_PATH = Path("状态") / "state.yml"
+LEGACY_STATE_PATH = Path("当前") / "state.yml"
+
+
 @dataclass(frozen=True)
 class WorkspaceLayout:
     root: Path
+
+    @property
+    def state_file(self) -> Path:
+        canonical = self.root / CANONICAL_STATE_PATH
+        return canonical if canonical.is_file() else self.root / LEGACY_STATE_PATH
+
+    @property
+    def connector_registry_file(self) -> Path:
+        canonical = self.root / "用户" / "数据接入" / "connectors.json"
+        if canonical.is_file():
+            return canonical
+        return self.root / "个人" / "数据源" / "connectors.json"
 
     @property
     def runtime_dir(self) -> Path:
@@ -35,11 +51,15 @@ class WorkspaceLayout:
 
     @property
     def apple_health_dir(self) -> Path:
-        return self.root / "事实" / "体况" / "apple-health"
+        canonical = self.root / "数据" / "体况" / "apple-health"
+        legacy = self.root / "事实" / "体况" / "apple-health"
+        return canonical if canonical.exists() or not legacy.exists() else legacy
 
     @property
     def training_facts_dir(self) -> Path:
-        return self.root / "事实" / "训练" / "xunji" / "mac_student_facts"
+        canonical = self.root / "数据" / "训练" / "xunji" / "mac_student_facts"
+        legacy = self.root / "事实" / "训练" / "xunji" / "mac_student_facts"
+        return canonical if canonical.exists() or not legacy.exists() else legacy
 
     @property
     def retained_cache_dir(self) -> Path:
@@ -55,7 +75,7 @@ def resolve_workspace(value: str | Path | WorkspaceLayout | None = None) -> Work
         candidates.extend([Path.cwd(), *Path.cwd().parents, Path.home() / "OneDrive" / "Fitness"])
     for candidate in candidates:
         root = candidate.resolve()
-        if (root / "当前" / "state.yml").is_file():
+        if (root / CANONICAL_STATE_PATH).is_file() or (root / LEGACY_STATE_PATH).is_file():
             return WorkspaceLayout(root)
     raise ValidationError(f"Not a Fitness v5 workspace: {candidates[0].resolve()}")
 

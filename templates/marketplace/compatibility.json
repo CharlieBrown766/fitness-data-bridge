@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "marketplace": "fitness-data-bridge",
   "plugin": "fitness-data-bridge",
-  "version": "1.0.0",
+  "version": "1.0.5",
   "requires": [
-    "fitness-planner>=2.0.0"
+    "fitness-planner>=2.0.4"
   ]
 }

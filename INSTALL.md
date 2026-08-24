@@ -1,5 +1,5 @@
 > Created time: 2026-08-16 00:51
-> Modified time: 2026-08-16 12:00
+> Modified time: 2026-08-25 02:18
 
 # Installation
 
@@ -15,7 +15,7 @@ Build and verify the release:
 python tools\build-public-package.py
 ```
 
-After extracting `fitness-data-bridge-1.0.0-public.zip`, install its marketplace and plugin:
+After extracting `fitness-data-bridge-1.0.5-public.zip`, install its marketplace and plugin:
 
 ```powershell
 codex plugin marketplace add <extracted-release-root> --json
@@ -23,10 +23,10 @@ codex plugin add fitness-data-bridge@fitness-data-bridge --json
 codex plugin list --marketplace fitness-data-bridge --json
 ```
 
-Install Fitness Planner 2.0.0 first. Start a new Codex task after installation because existing tasks retain the plugin snapshot loaded at task start.
+Install Fitness Planner 2.0.4 first. Start a new Codex task after installation because existing tasks retain the plugin snapshot loaded at task start.
 
 After the new plugin passes verification, remove the legacy
 `fitness-connector@fitness-connector` registration and change the active
-workspace `个人/数据源/connectors.json` selection from `fitness-connector` to
+workspace `用户/数据接入/connectors.json` selection from `fitness-connector` to
 `fitness-data-bridge`. Historical receipts remain unchanged; new receipts use
 `运行/receipts/data-bridge/`.

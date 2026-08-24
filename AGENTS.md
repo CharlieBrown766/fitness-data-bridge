@@ -1,5 +1,5 @@
 > Created time: 2026-08-16 00:51
-> Modified time: 2026-08-21 10:45
+> Modified time: 2026-08-25 02:21
 
 # Fitness Data Bridge development contract
 
@@ -9,6 +9,11 @@
 - All external writes default to dry-run. Live plan publication accepts one confirmed, hash-valid half-Block release revision containing all scheduled A1+B1 or A2+B2 sessions. It requires one matching authorization, target-Mac execution, one backup-before, one Xunji transaction, one SynFit launch, one Calendar batch and one unified readback/receipt. The legacy single-session route remains compatibility-only.
 - Do not install, publish, release or perform a live external write without the user's explicit request.
 - Markdown files preserve `Created time`; update `Modified time` in Asia/Shanghai.
+- The canonical Fitness workspace layout is `用户/数据接入/` for connector
+  configuration, `数据/` for formal imported records, `状态/` for active
+  machine state, `计划/` for Planner artifacts, and `运行/` for credentials,
+  caches, backups, logs and receipts. Previous directory names are discovery-only
+  compatibility and must not be emitted by new writes.
 - A component Release may build and validate Fitness Data Bridge as a Shujian
   Agent input, but must not install it into the developer's real `CODEX_HOME`.
   “Delivery”, “交付”, or a request to update the current Codex routes to

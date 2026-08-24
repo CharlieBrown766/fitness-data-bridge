@@ -35,7 +35,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "zip_path",
         nargs="?",
-        help="HealthAll_*.zip path. If omitted, use the newest zip in 事实/体况/apple-health/raw/.",
+        help="HealthAll_*.zip path. If omitted, use the newest zip in 数据/体况/apple-health/raw/.",
     )
     parser.add_argument("--start", help="Start date, YYYY-MM-DD. Defaults to earliest key metric date.")
     parser.add_argument("--end", help="End date, YYYY-MM-DD. Defaults to latest complete key metric date.")
@@ -72,7 +72,7 @@ def find_export_zip(
 
     candidates = list(raw_dir.glob("HealthAll_*.zip"))
     if not candidates:
-        raise FileNotFoundError("No HealthAll_*.zip found in 事实/体况/apple-health/raw/.")
+        raise FileNotFoundError("No HealthAll_*.zip found in 数据/体况/apple-health/raw/.")
     return max(candidates, key=lambda p: p.stat().st_mtime)
 
 

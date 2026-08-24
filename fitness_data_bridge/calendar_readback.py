@@ -122,7 +122,14 @@ tell application "Calendar"
                 try
                     repeat with alarmItem in display alarms of calendarEvent
                         try
-                            set end of alarmParts to "display:" & ((trigger interval of alarmItem) as text) & "m"
+                            set alarmDate to missing value
+                            try
+                                set alarmDate to trigger date of alarmItem
+                            end try
+                            if alarmDate is missing value then
+                                set alarmDate to eventStart + ((trigger interval of alarmItem) * minutes)
+                            end if
+                            set end of alarmParts to "display:" & my isoDateTime(alarmDate)
                         end try
                     end repeat
                 end try

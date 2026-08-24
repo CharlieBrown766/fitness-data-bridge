@@ -1,7 +1,57 @@
 > Created time: 2026-08-16 09:48
-> Modified time: 2026-08-16 12:26
+> Modified time: 2026-08-25 02:18
 
-# Fitness Data Bridge 1.0.0
+# Fitness Data Bridge 1.0.5
+
+- Added the component-release and Shujian Agent delivery contracts so the
+  bridge can only enter the developer Codex through the composite package.
+- Prevented validator imports from adding Python bytecode caches to otherwise
+  deterministic public packages.
+
+## Previous 1.0.4 release
+
+- Adopted `用户/数据接入/`, `数据/`, `状态/`, and `计划/` as the
+  canonical Fitness workspace paths while keeping `运行/` unchanged.
+- Added read compatibility for the previous workspace directory names so the
+  connector can be installed before the workspace migration.
+- Updated agent contracts, the connector skill, Apple Health destinations,
+  workspace discovery, tests, privacy guidance, and release metadata.
+
+## Previous 1.0.3 release
+
+- Set EventKit's per-event default-alarm suppression state before saving
+  repaired or newly published Calendar events, so a calendar-level default
+  alert cannot remain alongside the projected alerts.
+- Added the suppression state to Calendar inspection, repair previews and
+  exact readback; a repair cannot report success while an inherited default
+  alert remains.
+- Kept Calendar mutation scoped to the exact authorized release events without
+  changing the `Workout` calendar's global default-alert setting.
+
+## Previous 1.0.2 release
+
+- Replaced Calendar mutation and verification with an EventKit batch that
+  replaces explicit alerts with the two exact projected wall-clock timestamps.
+- Replaced internal phase, block, session and prescription-hash metadata in
+  Calendar notes with readable Chinese prescription summaries grouped by
+  warm-up, main training, core and cooldown.
+- Expanded the release-scoped repair to update notes and alarms together, with
+  schema-1.1 one-time authorization and exact EventKit readback.
+- Retained the AppleScript generators as compatibility diagnostics, while live
+  publication and repair now require EventKit Full Calendar Access.
+
+## Previous 1.0.1 release
+
+- Added exact same-day wall-clock reminder configuration through
+  `reminder_times`, including multiple reminders per Calendar event.
+- Fixed the AppleScript alarm-unit bug that expanded 30 minutes into 1,800
+  minutes, and retained the legacy relative-minute field without scaling.
+- Added in-place, release-scoped Calendar reminder repair with one-time
+  authorization, event identity preflight and alarm timestamp readback.
+- Extended unified Calendar verification to fail when reminder timestamps do
+  not match, rather than checking only title, start time and duration.
+
+## Previous 1.0.0 release
 
 - Renamed the product, plugin ID, marketplace, source package, Skill, commands,
   release paths and receipt namespace to Fitness Data Bridge /

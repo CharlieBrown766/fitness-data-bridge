@@ -1,5 +1,5 @@
 > Created time: 2026-08-16 00:51
-> Modified time: 2026-08-16 12:00
+> Modified time: 2026-08-19 22:47
 
 # Operations
 
@@ -12,6 +12,20 @@ Run `scripts/fitness_data_bridge_release.py --workspace <Fitness> --release <wor
 Live publication requires `--write --authorization <file>` on the target Mac. The schema-2.0 authorization binds `phase_id`, `block_id`, `release_id`, `revision`, `release_sha256`, the ordered `session_ids`, the exact `replacement_window`, `confirmed: true`, `one_time: true`, and a timezone-aware `expires_at`.
 
 All strength sessions are written in one Xunji transaction, SynFit is launched once, and all release events are written to Calendar in one batch. Database and Calendar are read back as one release before one receipt is finalized. Do not invoke the legacy session route repeatedly.
+
+Calendar defaults may specify `reminder_times` as unique same-day `HH:MM`
+values that precede the event start. The connector writes these as exact alarm
+timestamps and verifies them during unified readback. The legacy scalar
+`reminder_minutes_before` remains supported and is interpreted directly in
+minutes.
+
+## Repair half-Block Calendar notes and reminders
+
+Run `scripts/fitness_data_bridge_calendar_repair.py --workspace <Fitness> --release <workspace-relative-release.json>` on the target Mac for a read-only comparison of exact event identities, current notes and all EventKit alarm timestamps against the projection.
+
+Live repair adds `--write --authorization <file>`. Its schema-1.1 authorization binds the exact release identity and hash, ordered session IDs, replacement window and projection hash with `operation: repair_release_calendar_event_details`, `confirmed: true`, `one_time: true`, and a timezone-aware `expires_at`. The operation changes only notes and alarms in place, sets the per-event default-alert suppression state, replaces explicit alerts with the exact projected alarms, performs one EventKit batch, and writes one notes-and-reminders readback receipt. Readback must verify that suppression state as well as both timestamps and the notes.
+
+EventKit inspection and mutation require Full Calendar Access. Check with `scripts/fitness_data_bridge_calendar_access.py`; add `--request` only while the user is present to approve the macOS permission prompt. If a remote macOS session returns denied without displaying a prompt, stop retrying and have the user grant Full Calendar Access to the responsible remote-login process in System Settings before continuing.
 
 ## Legacy next-session compatibility
 
@@ -42,4 +56,4 @@ Use the narrow module entrypoint matching the requested domain: `xunji_client`, 
 
 ## Apple Health
 
-Use `python -m fitness_data_bridge.apple_health --workspace <Fitness> ...`. Raw exports land in `事实/体况/apple-health/raw/`; parsed outputs land in `事实/体况/apple-health/parsed/`.
+Use `python -m fitness_data_bridge.apple_health --workspace <Fitness> ...`. Raw exports land in `数据/体况/apple-health/raw/`; parsed outputs land in `数据/体况/apple-health/parsed/`.

@@ -1,6 +1,6 @@
 {
   "name": "fitness-data-bridge",
-  "version": "1.0.0",
+  "version": "1.0.5",
   "description": "Private application bridge for a workspace-owned Fitness database.",
   "author": {
     "name": "Workspace Maintainer"
