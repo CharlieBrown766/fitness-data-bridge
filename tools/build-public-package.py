@@ -200,7 +200,7 @@ def build(args: argparse.Namespace) -> dict:
         "marketplace": MARKETPLACE_OWNER,
         "plugin": PLUGIN,
         "version": VERSION,
-        "requires": ["fitness-planner>=2.0.4"],
+        "requires": ["fitness-planner>=2.0.5"],
     }:
         raise BuildError("Compatibility template does not match the release identity.")
 

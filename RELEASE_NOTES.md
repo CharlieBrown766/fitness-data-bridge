@@ -1,5 +1,5 @@
 > Created time: 2026-08-16 09:48
-> Modified time: 2026-08-25 11:04
+> Modified time: 2026-08-25 11:13
 
 # Fitness Data Bridge 1.0.6
 
@@ -7,6 +7,7 @@
   bridge no longer generates a marketplace or component installer.
 - Names `shujian-agent` as the sole marketplace owner and adds release tests
   proving that component self-signing artifacts are absent.
+- Locks the component attestation to Fitness Planner 2.0.5 or newer.
 
 ## Previous 1.0.5 release
 

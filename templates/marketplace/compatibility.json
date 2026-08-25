@@ -4,6 +4,6 @@
   "plugin": "fitness-data-bridge",
   "version": "1.0.6",
   "requires": [
-    "fitness-planner>=2.0.4"
+    "fitness-planner>=2.0.5"
   ]
 }
