@@ -1,5 +1,5 @@
 > Created time: 2026-08-16 00:51
-> Modified time: 2026-08-25 02:21
+> Modified time: 2026-08-25 02:34
 
 # Fitness Data Bridge development contract
 
@@ -14,10 +14,12 @@
   machine state, `计划/` for Planner artifacts, and `运行/` for credentials,
   caches, backups, logs and receipts. Previous directory names are discovery-only
   compatibility and must not be emitted by new writes.
-- A component Release may build and validate Fitness Data Bridge as a Shujian
-  Agent input, but must not install it into the developer's real `CODEX_HOME`.
+- A component Release contains only the plugin payload, checksum manifest and
+  compatibility attestation naming `shujian-agent` as marketplace owner. It
+  must not contain or generate `.agents/plugins/marketplace.json`, an installer,
+  or a marketplace registration.
   “Delivery”, “交付”, or a request to update the current Codex routes to
   `<AgentRoot>/development/shujian-agent/.agents/skills/release-delivery/SKILL.md`.
-  Its standalone installation instructions are restricted to an isolated
-  temporary `CODEX_HOME` and must not create a `fitness-data-bridge`
-  marketplace in the developer environment.
+  Only Shujian Agent may accept this component into `COMPONENTS.json`, issue the
+  marketplace manifest, and install it. Component tests validate payloads
+  directly and never create a temporary component marketplace.

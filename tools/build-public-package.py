@@ -16,8 +16,9 @@ import zipfile
 
 
 PLUGIN = "fitness-data-bridge"
-VERSION = "1.0.5"
-MARKETPLACE = "fitness-data-bridge"
+VERSION = "1.0.6"
+MARKETPLACE_OWNER = "shujian-agent"
+COMPONENT_PACKAGE_TYPE = "shujian-component-release"
 PUBLIC_DIRECTORIES = (
     ".codex-plugin",
     "assets",
@@ -192,22 +193,11 @@ def build(args: argparse.Namespace) -> dict:
     if manifest.get("name") != PLUGIN or manifest.get("version") != VERSION:
         raise BuildError(f"Plugin identity must be {PLUGIN} {VERSION}.")
 
-    marketplace_template = plugin_root / "templates" / "marketplace" / "marketplace.json"
     compatibility_template = plugin_root / "templates" / "marketplace" / "compatibility.json"
-    marketplace = load_json(marketplace_template)
     compatibility = load_json(compatibility_template)
-    entries = marketplace.get("plugins")
-    if (
-        marketplace.get("name") != MARKETPLACE
-        or not isinstance(entries, list)
-        or len(entries) != 1
-        or entries[0].get("name") != PLUGIN
-        or entries[0].get("source") != {"source": "local", "path": f"./plugins/{PLUGIN}"}
-    ):
-        raise BuildError("Marketplace template does not match the release identity.")
     if compatibility != {
         "schemaVersion": 1,
-        "marketplace": MARKETPLACE,
+        "marketplace": MARKETPLACE_OWNER,
         "plugin": PLUGIN,
         "version": VERSION,
         "requires": ["fitness-planner>=2.0.4"],
@@ -245,7 +235,6 @@ def build(args: argparse.Namespace) -> dict:
 
     marketplace_destination = release_root / ".agents" / "plugins"
     marketplace_destination.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(marketplace_template, marketplace_destination / "marketplace.json")
     shutil.copy2(compatibility_template, marketplace_destination / "compatibility.json")
     for name in DISTRIBUTION_FILES:
         source = plugin_root / name
@@ -253,7 +242,7 @@ def build(args: argparse.Namespace) -> dict:
             raise BuildError(f"Missing release document: {source}")
         shutil.copy2(source, release_root / name)
 
-    codex_home = Path(args.codex_home or os.environ.get("CODEX_HOME", "~/.codex")).expanduser().resolve()
+    codex_home = Path(args.codex_home or "~/.codex").expanduser().resolve()
     plugin_validator = codex_home / "skills" / ".system" / "plugin-creator" / "scripts" / "validate_plugin.py"
     skill_validator = codex_home / "skills" / ".system" / "skill-creator" / "scripts" / "quick_validate.py"
     run_validator(args.python, plugin_validator, plugin_destination, "Plugin")
@@ -277,8 +266,15 @@ def build(args: argparse.Namespace) -> dict:
             "algorithm": "SHA256",
             "plugin": PLUGIN,
             "version": VERSION,
-            "marketplace": MARKETPLACE,
-            "validation": {"plugin": "PASS", "skills": skills, "privacy": "PASS"},
+            "packageType": COMPONENT_PACKAGE_TYPE,
+            "marketplaceOwner": MARKETPLACE_OWNER,
+            "marketplaceGenerated": False,
+            "validation": {
+                "plugin": "PASS",
+                "skills": skills,
+                "privacy": "PASS",
+                "component_contract": "PASS",
+            },
             "privacyRules": sorted(PRIVACY_RULES),
             "scannedFiles": scanned,
             "files": records,
@@ -292,7 +288,9 @@ def build(args: argparse.Namespace) -> dict:
         "status": "BUILT",
         "plugin": PLUGIN,
         "version": VERSION,
-        "marketplace": MARKETPLACE,
+        "package_type": COMPONENT_PACKAGE_TYPE,
+        "marketplace_owner": MARKETPLACE_OWNER,
+        "marketplace_generated": False,
         "release_root": str(release_root),
         "zip_path": str(zip_path),
         "zip_sha256": zip_hash,

@@ -1,9 +1,12 @@
 > Created time: 2026-08-16 00:51
-> Modified time: 2026-08-25 02:18
+> Modified time: 2026-08-25 11:04
 
 # Installation
 
-Install from the public release package, not from the development source. The release contains a dedicated `fitness-data-bridge` marketplace, checksum manifest and privacy-scanned runtime payload.
+Fitness Data Bridge is distributed only as a Shujian Agent component input. Its
+release contains a privacy-scanned plugin payload, checksum manifest and a
+compatibility attestation owned by `shujian-agent`; it contains no marketplace
+manifest or installer.
 
 Runtime requirements are Python 3.11 or newer and `tzdata` on Windows. Live Xunji SQLite, SynFit and Apple Calendar publication must run on the target Mac; Windows supports workspace validation, API operations, Apple Health parsing and projection dry-runs.
 
@@ -15,15 +18,19 @@ Build and verify the release:
 python tools\build-public-package.py
 ```
 
-After extracting `fitness-data-bridge-1.0.5-public.zip`, install its marketplace and plugin:
+After extracting the component ZIP, verify that it declares
+`packageType=shujian-component-release`, `marketplaceOwner=shujian-agent` and
+`marketplaceGenerated=false`. It is accepted and installed only through a
+Shujian Agent composite Release:
 
 ```powershell
-codex plugin marketplace add <extracted-release-root> --json
-codex plugin add fitness-data-bridge@fitness-data-bridge --json
-codex plugin list --marketplace fitness-data-bridge --json
+python <AgentRoot>\development\shujian-agent\tools\build-composite-package.py
 ```
 
-Install Fitness Planner 2.0.4 first. Start a new Codex task after installation because existing tasks retain the plugin snapshot loaded at task start.
+Do not create or register a `fitness-data-bridge` marketplace. Shujian Agent
+resolves and signs the Planner dependency, emits the only marketplace manifest,
+and performs installation transactionally. Start a new Codex task after the
+composite package is delivered.
 
 After the new plugin passes verification, remove the legacy
 `fitness-connector@fitness-connector` registration and change the active

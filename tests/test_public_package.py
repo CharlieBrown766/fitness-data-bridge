@@ -37,6 +37,14 @@ class PublicPackageTests(unittest.TestCase):
             self.assertFalse((plugin_root / ".git").exists())
             self.assertIn("runtime contract", (plugin_root / "AGENTS.md").read_text(encoding="utf-8"))
             self.assertEqual("PASS", result["privacy_scan"])
+            self.assertEqual("shujian-component-release", result["package_type"])
+            self.assertEqual("shujian-agent", result["marketplace_owner"])
+            self.assertFalse(result["marketplace_generated"])
+            self.assertFalse(
+                (release_root / ".agents" / "plugins" / "marketplace.json").exists()
+            )
+            for installer in ("install.py", "install.ps1", "install.sh"):
+                self.assertFalse((release_root / installer).exists())
 
 
 if __name__ == "__main__":

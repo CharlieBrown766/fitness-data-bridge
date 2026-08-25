@@ -1,7 +1,14 @@
 > Created time: 2026-08-16 09:48
-> Modified time: 2026-08-25 02:18
+> Modified time: 2026-08-25 11:04
 
-# Fitness Data Bridge 1.0.5
+# Fitness Data Bridge 1.0.6
+
+- Emits only the `shujian-component-release` payload and attestation; the
+  bridge no longer generates a marketplace or component installer.
+- Names `shujian-agent` as the sole marketplace owner and adds release tests
+  proving that component self-signing artifacts are absent.
+
+## Previous 1.0.5 release
 
 - Added the component-release and Shujian Agent delivery contracts so the
   bridge can only enter the developer Codex through the composite package.
