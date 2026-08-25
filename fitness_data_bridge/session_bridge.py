@@ -155,9 +155,19 @@ def _calendar_set_text(value: dict[str, Any]) -> str:
         dose = f"{reps}秒"
     else:
         dose = f"{reps}次"
-    load = value.get("load")
-    if load is not None:
-        dose += f" @ {_number(load)}kg"
+    side_loads = value.get("side_loads")
+    if isinstance(side_loads, dict):
+        left = side_loads.get("left")
+        right = side_loads.get("right")
+        if left is not None and right is not None:
+            if left == right:
+                dose += f" @ 左右各{_number(left)}kg"
+            else:
+                dose += f" @ 左{_number(left)}kg/右{_number(right)}kg"
+    else:
+        load = value.get("load")
+        if load is not None:
+            dose += f" @ {_number(load)}kg"
     if value.get("rir") is not None:
         dose += f"（余力{_number(value['rir'])}次）"
     elif value.get("rpe") is not None:
@@ -168,8 +178,11 @@ def _calendar_set_text(value: dict[str, Any]) -> str:
 def _calendar_movement_text(movement: dict[str, Any]) -> str:
     label = str(movement.get("label") or movement.get("action_key") or "未命名动作")
     laterality = movement.get("laterality")
-    if isinstance(laterality, dict) and laterality.get("recording") == "separate_left_right":
-        label += "（每侧）"
+    if isinstance(laterality, dict):
+        if laterality.get("recording") == "paired_left_right_per_set":
+            label += "（左右配对记录）"
+        elif laterality.get("recording") == "separate_left_right":
+            label += "（每侧）"
     sets = movement.get("sets")
     if not isinstance(sets, list) or not sets:
         return label
@@ -222,35 +235,57 @@ def calendar_training_summary(prescription: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _target_set(value: Any, *, movement_section: str) -> dict[str, Any]:
+def _target_set(
+    value: Any,
+    *,
+    movement_section: str,
+    paired_left_right: bool = False,
+) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValidationError("Movement set must be an object")
     reps = value.get("reps")
     if reps is None:
         raise ValidationError("Movement set is missing reps")
     load = value.get("load")
+    side_loads = value.get("side_loads")
+    if paired_left_right:
+        if not isinstance(side_loads, dict) or set(side_loads) != {"left", "right"}:
+            raise ValidationError("Paired left/right sets require exact side_loads")
+        if load is not None:
+            raise ValidationError("Paired left/right sets may not use ambiguous load")
+        left_load = side_loads.get("left")
+        right_load = side_loads.get("right")
+        if (left_load is None) != (right_load is None):
+            raise ValidationError("Paired left/right loads must specify both sides or neither")
+    else:
+        if side_loads is not None:
+            raise ValidationError("side_loads requires paired_left_right_per_set recording")
+        left_load = None
+        right_load = load
     source_unit = str(value.get("unit") or "kg")
     repetition_only = movement_section in {"dynamic_warmup", "cooldown"}
     result = {
         # This is Xunji's internal no-weight-field flag. It does not select
         # the user-facing "自身加重" record type when exetype is empty.
-        "selfWeight": load is None,
+        "selfWeight": right_load is None and left_load is None,
         # Xunji uses kg as the storage sentinel for repetition-only records.
         # Writing rule-model units such as
         # "repetitions" makes the app render internal text like
         # "+repetitions" in the weight control.
         "unit": "kg",
         "reps": "1" if source_unit == "seconds" else _number(reps),
-        "weight": _number(load),
+        "weight": _number(right_load),
         "done": False,
         "user_rep": True,
-        "user_weight": load is not None,
+        "user_weight": right_load is not None or left_load is not None,
         "time": reps if source_unit == "seconds" and not repetition_only else 0,
     }
     # A dedicated dynamic-warmup movement is a normal unloaded action in
     # Xunji. setType=热 is reserved for warm-up sets nested in a main lift.
     if movement_section == "main" and value.get("set_role") == "warmup":
         result["setType"] = "热"
+    if paired_left_right:
+        result["leftWeight"] = _number(left_load)
     return result
 
 
@@ -284,8 +319,17 @@ def _xunji_movements(
         if not isinstance(sets, list) or not sets:
             raise ValidationError(f"Action has no prescribed sets: {key}")
         settings = movement.get("settings") if isinstance(movement.get("settings"), dict) else {}
+        laterality = movement.get("laterality")
+        paired_left_right = (
+            isinstance(laterality, dict)
+            and laterality.get("recording") == "paired_left_right_per_set"
+        )
         projected_sets = [
-            _target_set(item, movement_section=str(movement.get("section") or ""))
+            _target_set(
+                item,
+                movement_section=str(movement.get("section") or ""),
+                paired_left_right=paired_left_right,
+            )
             for item in sets
         ]
         movement_section = str(movement.get("section") or "")
@@ -293,10 +337,23 @@ def _xunji_movements(
         if movement_section in {"dynamic_warmup", "cooldown"}:
             exetype = ""
         elif exetype in {"plus_weight", "times"} and all(
-            item.get("load") is None for item in sets if isinstance(item, dict)
+            item.get("load") is None
+            and not any(
+                load is not None
+                for load in (
+                    item.get("side_loads", {}).values()
+                    if isinstance(item.get("side_loads"), dict)
+                    else []
+                )
+            )
+            for item in sets
+            if isinstance(item, dict)
         ):
             exetype = ""
-        note = str(settings.get("note") or "")
+        # Xunji's training experience and action-note fields are user feedback
+        # surfaces.  Export only an explicit human-readable execution
+        # instruction; never copy internal intent, provenance, or marker keys.
+        note = str(settings.get("user_facing_instruction") or "").strip()
         if movement_section in {"dynamic_warmup", "cooldown"}:
             seconds = sorted(
                 {
@@ -308,8 +365,7 @@ def _xunji_movements(
             if seconds:
                 duration_note = f"每组保持 {'/'.join(seconds)} 秒"
                 note = f"{note}；{duration_note}" if note else duration_note
-        result.append(
-            {
+        projected_movement = {
                 "key": key,
                 "sets": projected_sets,
                 "type": str(settings.get("xunji_type", "")),
@@ -320,7 +376,9 @@ def _xunji_movements(
                 # exported.
                 "note": note,
             }
-        )
+        if paired_left_right:
+            projected_movement["singleSide"] = True
+        result.append(projected_movement)
     return result
 
 
@@ -341,10 +399,6 @@ def project_session(
     target_date = str(session["schedule"]["scheduled_for"])
     title = str(session["prescription"].get("title") or session["session_id"])
     duration = int(session["prescription"].get("estimated_minutes") or defaults.get("duration_minutes") or 75)
-    provenance_notes = (
-        f"Fitness v5 | phase={session['phase_id']} | block={session['block_id']} | "
-        f"session={session['session_id']} | prescription_sha256={session['prescription_sha256']}"
-    )
     calendar_notes = calendar_training_summary(session["prescription"])
     app_records: list[dict[str, Any]] = []
     database_scope: list[dict[str, str]] = []
@@ -354,7 +408,9 @@ def project_session(
                 "date": target_date,
                 "title": title,
                 "category": "main",
-                "note": provenance_notes,
+                # Identity and provenance stay in the release projection and
+                # workspace receipt, not in Xunji's user-feedback field.
+                "note": "",
                 "movements": _xunji_movements(
                     session["prescription"],
                     capabilities or load_action_capabilities(layout),
@@ -388,6 +444,14 @@ def project_session(
         "replacement_window": {"start": target_date, "end": target_date},
         "database_delete_scope": database_scope,
         "database_readback_scope": database_scope,
+        "database_identity_map": [
+            {
+                "session_id": session["session_id"],
+                "date": item["date"],
+                "title": item["title"],
+            }
+            for item in database_scope
+        ],
         "app_records": app_records,
         "calendar_delete_scope": [
             {"calendar": calendar, "date": target_date, "title": title}

@@ -138,6 +138,7 @@ def publish_next(
         "prescription_sha256": session["prescription_sha256"],
         "projection_sha256": canonical_sha256(projection),
         "authorization_sha256": authorization_sha256,
+        "database_identity_map": projection.get("database_identity_map", []),
         "started_at": datetime.now().astimezone().isoformat(timespec="seconds"),
     }
     atomic_write_json(receipt_path, receipt)
@@ -325,6 +326,7 @@ def publish_release(
         "release_sha256": projection["source"]["release_sha256"],
         "projection_sha256": canonical_sha256(projection),
         "authorization_sha256": authorization_sha256,
+        "database_identity_map": projection.get("database_identity_map", []),
         "started_at": datetime.now().astimezone().isoformat(timespec="seconds"),
     }
     atomic_write_json(receipt_path, receipt)

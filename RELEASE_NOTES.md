@@ -1,7 +1,26 @@
 > Created time: 2026-08-16 09:48
-> Modified time: 2026-08-25 11:13
+> Modified time: 2026-08-25 17:36
 
-# Fitness Data Bridge 1.0.6
+# Fitness Data Bridge 1.0.7
+
+- Added first-class ingestion for overlapping `health-merged-*.json` Apple
+  Health snapshots while retaining the legacy `HealthAll_*.zip` route.
+- Aggregates all workspace-owned merged snapshots and removes 12-hour/48-hour
+  overlap with the stable source record key before daily metrics are computed.
+- Normalizes ISO timestamps, numeric sleep stages and percentage oxygen
+  saturation, and treats the latest export day as partial by default.
+- Keeps personal exports out of the plugin by covering the new format with
+  synthetic fixtures only.
+- Projects paired left/right prescriptions into Xunji `singleSide`, `weight`
+  and `leftWeight` fields and preserves side-level volume in refreshed facts.
+- Keeps Xunji training experience free of provenance markers, exports only
+  explicit human-readable action instructions, and records session-to-Xunji
+  identity mappings in publication receipts.
+- Stabilizes Mac-local SynFit refreshes before facts become planning-eligible,
+  separates training-experience and action-note feedback, and returns output
+  hashes for verified cross-device transfer.
+
+## Previous 1.0.6 release
 
 - Emits only the `shujian-component-release` payload and attestation; the
   bridge no longer generates a marketplace or component installer.

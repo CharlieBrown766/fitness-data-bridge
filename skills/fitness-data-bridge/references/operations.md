@@ -1,5 +1,5 @@
 > Created time: 2026-08-16 00:51
-> Modified time: 2026-08-19 22:47
+> Modified time: 2026-08-25 17:20
 
 # Operations
 
@@ -54,6 +54,21 @@ Strength sessions are written to Xunji SQLite, synchronized through SynFit and p
 
 Use the narrow module entrypoint matching the requested domain: `xunji_client`, `xunji_plan`, `xunji_food`, `xunji_body`, `xunji_bulk_fetch`, or `facts_refresh`. Reads may populate workspace caches and facts. Mutations require their native dry-run and confirmation gates.
 
+For a multi-week training-history refresh, enumerate every Monday in the exact
+requested interval and run `facts_refresh --week-start YYYY-MM-DD` for each
+week. Verify that each week-specific facts file exists; `latest_summary.md`
+does not establish continuity. Formal Mac-local facts require the post-SynFit
+database signature to remain stable for the configured settle interval.
+
 ## Apple Health
 
-Use `python -m fitness_data_bridge.apple_health --workspace <Fitness> ...`. Raw exports land in `数据/体况/apple-health/raw/`; parsed outputs land in `数据/体况/apple-health/parsed/`.
+Use `python -m fitness_data_bridge.apple_health --workspace <Fitness> ...`.
+The default route aggregates every `health-merged-*.json` under
+`数据/体况/apple-health/merged/`, removes overlap by
+`type + startDate + endDate + value + unit + source`, and writes derived daily
+facts under `数据/体况/apple-health/parsed/`. The newest export day is excluded
+as partial unless `--keep-current-day` is explicit. If no merged JSON exists,
+the adapter falls back to the newest legacy `HealthAll_*.zip` under
+`数据/体况/apple-health/raw/`. An explicit JSON or ZIP path remains supported;
+the default copies external inputs and `--move-source` must be explicit before
+the source is moved into its workspace-owned directory.

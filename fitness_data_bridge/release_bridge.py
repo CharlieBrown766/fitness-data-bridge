@@ -71,7 +71,11 @@ def _validate_strength_loads(session: dict[str, Any], field: str) -> None:
                 "comparison_signature"
             ].strip():
                 raise ValidationError("comparable load requires comparison_signature")
-            if any(item.get("load") is None for item in working):
+            if any(
+                load is None
+                for item in working
+                for load in _set_load_values(item)
+            ):
                 raise WriteGateError("comparable kilogram working sets require numeric loads")
         elif basis.get("kind") == "calibration":
             settings = movement.get("settings")
@@ -84,10 +88,25 @@ def _validate_strength_loads(session: dict[str, Any], field: str) -> None:
                 "calibration_rule"
             ].strip():
                 raise WriteGateError("calibration lacks an executable calibration_rule")
-            if any(item.get("load") is not None for item in working):
+            if any(
+                load is not None
+                for item in working
+                for load in _set_load_values(item)
+            ):
                 raise WriteGateError("calibration may not guess a kilogram load")
         else:
             raise WriteGateError("kilogram working sets require comparable or calibration load_basis")
+
+
+def _set_load_values(target: dict[str, Any]) -> list[Any]:
+    side_loads = target.get("side_loads")
+    if isinstance(side_loads, dict):
+        if set(side_loads) != {"left", "right"}:
+            raise ValidationError("paired side_loads must contain left and right only")
+        if target.get("load") is not None:
+            raise ValidationError("paired side_loads may not accompany set.load")
+        return [side_loads.get("left"), side_loads.get("right")]
+    return [target.get("load")]
 
 
 def validate_release(release: Any, *, require_publishable: bool = True) -> dict[str, Any]:
@@ -179,6 +198,9 @@ def project_release(
     ]
     dates = [event["date"] for item in projected for event in item["calendar_events"]]
     database_scope = [item for batch in projected for item in batch["database_delete_scope"]]
+    database_identity_map = [
+        item for batch in projected for item in batch["database_identity_map"]
+    ]
     calendar_scope = [item for batch in projected for item in batch["calendar_delete_scope"]]
     app_records = [item for batch in projected for item in batch["app_records"]]
     events = [item for batch in projected for item in batch["calendar_events"]]
@@ -199,6 +221,7 @@ def project_release(
         "replacement_window": {"start": min(dates), "end": max(dates)},
         "database_delete_scope": database_scope,
         "database_readback_scope": list(database_scope),
+        "database_identity_map": database_identity_map,
         "app_records": app_records,
         "calendar_delete_scope": calendar_scope,
         "calendar_events": events,

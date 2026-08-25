@@ -1,16 +1,24 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 import hashlib
 import json
 from pathlib import Path
 import sqlite3
 import subprocess
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import MagicMock, patch
 
-from fitness_data_bridge.apple_health import date_range, parse_dt
+from fitness_data_bridge.apple_health import (
+    choose_date_window,
+    date_range,
+    find_export_sources,
+    load_merged_snapshots,
+    parse_dt,
+    populate_daily_metrics,
+)
 from fitness_data_bridge.calendar_reminders import reminder_at_values, reminder_intervals
 from fitness_data_bridge.calendar_eventkit import eventkit_plan
 from fitness_data_bridge.calendar_repair import repair_calendar_events
@@ -21,6 +29,7 @@ from fitness_data_bridge.calendar_writer import (
     readback_calendar,
 )
 from fitness_data_bridge.errors import ValidationError, WriteGateError
+from fitness_data_bridge.facts_refresh import analyze_action
 from fitness_data_bridge.io import canonical_sha256
 from fitness_data_bridge.layout import WorkspaceLayout, resolve_workspace
 from fitness_data_bridge.publisher import dry_run_next
@@ -258,10 +267,29 @@ class DataBridgeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             fixture = WorkspaceFixture(Path(directory))
             layout = WorkspaceLayout(fixture.root)
-            projected = project_session(session(), layout=layout)
+            value = session()
+            value["prescription"]["movements"][0]["settings"] = {
+                "user_facing_instruction": "本次器械坐姿推举采用拳心对握。",
+                "internal_marker": "Fitness v5 | phase=hidden",
+            }
+            value["prescription_sha256"] = canonical_sha256(value["prescription"])
+            projected = project_session(value, layout=layout)
             movement = projected["app_records"][0]["movements"][0]
             self.assertEqual("weight", movement["exetype"])
             self.assertEqual("40", movement["sets"][0]["weight"])
+            self.assertEqual("本次器械坐姿推举采用拳心对握。", movement["note"])
+            self.assertNotIn("phase=hidden", json.dumps(projected["app_records"], ensure_ascii=False))
+            self.assertEqual("", projected["app_records"][0]["note"])
+            self.assertEqual(
+                [
+                    {
+                        "session_id": "session-1",
+                        "date": "2026-08-20",
+                        "title": "A1 Push",
+                    }
+                ],
+                projected["database_identity_map"],
+            )
             self.assertEqual("Workout", projected["calendar_events"][0]["calendar"])
             self.assertEqual(
                 ["09:00", "17:00"],
@@ -513,7 +541,7 @@ class DataBridgeTests(unittest.TestCase):
                 {
                     "action_key": "stretch",
                     "section": "cooldown",
-                    "settings": {"note": "低疲劳收操"},
+                    "settings": {"user_facing_instruction": "低疲劳收操"},
                     "sets": [
                         {
                             "set_role": "recovery",
@@ -542,6 +570,87 @@ class DataBridgeTests(unittest.TestCase):
         self.assertEqual("kg", movement["sets"][0]["unit"])
         self.assertEqual("1", movement["sets"][0]["reps"])
         self.assertEqual(0, movement["sets"][0]["time"])
+
+    def test_paired_left_right_sets_project_exact_xunji_fields(self) -> None:
+        prescription = {
+            "movements": [
+                {
+                    "action_key": "one_arm_pull",
+                    "label": "绳索臂屈伸（单）",
+                    "section": "main",
+                    "intent": "volume",
+                    "laterality": {
+                        "mode": "unilateral",
+                        "recording": "paired_left_right_per_set",
+                    },
+                    "settings": {
+                        "user_facing_instruction": "左右动作幅度保持一致。",
+                        "internal_marker": "must-not-export",
+                    },
+                    "sets": [
+                        {
+                            "set_role": "effective",
+                            "reps": 12,
+                            "load": None,
+                            "side_loads": {"left": 10, "right": 10},
+                            "unit": "kg",
+                        },
+                        {
+                            "set_role": "effective",
+                            "reps": 12,
+                            "load": None,
+                            "side_loads": {"left": 10, "right": 10},
+                            "unit": "kg",
+                        },
+                    ],
+                }
+            ]
+        }
+        capabilities = {
+            "one_arm_pull": {
+                "key": "one_arm_pull",
+                "label": "绳索臂屈伸（单）",
+                "availability": {"planning_eligible": True},
+                "write_semantics": {
+                    "exetype": "weight",
+                    "weight_semantics": "external_load_kg",
+                },
+            }
+        }
+        movement = _xunji_movements(prescription, capabilities)[0]
+        self.assertTrue(movement["singleSide"])
+        self.assertEqual("10", movement["sets"][0]["weight"])
+        self.assertEqual("10", movement["sets"][0]["leftWeight"])
+        self.assertEqual("左右动作幅度保持一致。", movement["note"])
+        self.assertNotIn("must-not-export", json.dumps(movement, ensure_ascii=False))
+
+    def test_facts_preserve_side_weights_and_normalize_side_volume(self) -> None:
+        analyzed = analyze_action(
+            {
+                "key": "hammercurl",
+                "label": "锤式弯举",
+                "type": "手臂",
+                "exetype": "weight",
+                "singleSide": True,
+                "note": "右侧最后两次较吃力",
+                "sets": [
+                    {
+                        "weight": "10",
+                        "leftWeight": "10",
+                        "reps": "12",
+                        "unit": "kg",
+                        "done": True,
+                    }
+                ],
+            },
+            True,
+        )
+        self.assertTrue(analyzed["single_side"])
+        self.assertEqual("10", analyzed["sets"][0]["left_weight"])
+        self.assertEqual(1, analyzed["counted_sets"])
+        self.assertEqual(2, analyzed["counted_side_sets"])
+        self.assertEqual(24, analyzed["counted_side_reps"])
+        self.assertEqual(240, analyzed["counted_tonnage"])
 
     def test_synfit_is_restarted_when_already_running(self) -> None:
         completed = subprocess.CompletedProcess([], 0, stdout="true\n")
@@ -765,6 +874,132 @@ class DataBridgeTests(unittest.TestCase):
         parsed = parse_dt("2026-08-16 07:30:00 +0800")
         self.assertIsNotNone(parsed)
         self.assertEqual(2, len(date_range(parsed.date(), parsed.date() + timedelta(days=1))))
+        self.assertEqual(
+            "2026-08-16T07:30:00+08:00",
+            parse_dt("2026-08-16T07:30:00+08:00").isoformat(),
+        )
+
+    def test_apple_health_merged_snapshots_dedupe_and_normalize(self) -> None:
+        def record(
+            data_type: str,
+            start: str,
+            end: str,
+            value: object,
+            unit: str,
+            source: str = "Synthetic Watch",
+        ) -> dict[str, object]:
+            return {
+                "type": data_type,
+                "startDate": start,
+                "endDate": end,
+                "value": value,
+                "unit": unit,
+                "source": source,
+            }
+
+        duplicate_step = record(
+            "steps",
+            "2026-08-24T08:00:00+08:00",
+            "2026-08-24T08:05:00+08:00",
+            100,
+            "step",
+        )
+        first = {
+            "schema_version": "apple-health-fitness-merged-v1",
+            "generated_at": "2026-08-24T12:00:00+08:00",
+            "data_types": {
+                "steps": {"records": [duplicate_step]},
+                "oxygen-saturation": {
+                    "records": [
+                        record(
+                            "oxygen-saturation",
+                            "2026-08-24T06:00:00+08:00",
+                            "2026-08-24T06:00:01+08:00",
+                            98,
+                            "%",
+                        )
+                    ]
+                },
+                "sleep": {
+                    "records": [
+                        record(
+                            "sleep",
+                            "2026-08-23T23:00:00+08:00",
+                            "2026-08-24T07:00:00+08:00",
+                            3,
+                            "",
+                        )
+                    ]
+                },
+            },
+        }
+        second = {
+            "schema_version": "apple-health-fitness-merged-v1",
+            "generated_at": "2026-08-25T00:00:00+08:00",
+            "data_types": {
+                "steps": {
+                    "records": [
+                        duplicate_step,
+                        record(
+                            "steps",
+                            "2026-08-24T09:00:00+08:00",
+                            "2026-08-24T09:05:00+08:00",
+                            50,
+                            "step",
+                        ),
+                    ]
+                }
+            },
+        }
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            paths = [root / "health-merged-20260824-120000.json", root / "health-merged-20260825-000000.json"]
+            paths[0].write_text(json.dumps(first), encoding="utf-8")
+            paths[1].write_text(json.dumps(second), encoding="utf-8")
+            record_sets, scanned, duplicates, generated_at = load_merged_snapshots(paths)
+
+        self.assertEqual(5, scanned)
+        self.assertEqual(1, duplicates)
+        self.assertEqual(2, len(record_sets["steps"]))
+        self.assertEqual("2026-08-25T00:00:00+08:00", generated_at.isoformat())
+        daily, seen_dates, _ = populate_daily_metrics(record_sets)
+        self.assertEqual({date(2026, 8, 24)}, seen_dates)
+        self.assertEqual(150, daily[date(2026, 8, 24)]["steps_est"])
+        self.assertEqual(98, daily[date(2026, 8, 24)]["spo2_pct"])
+        self.assertEqual(480, daily[date(2026, 8, 24)]["sleep_core_min"])
+
+    def test_apple_health_prefers_all_merged_snapshots_over_legacy_zip(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            raw_dir = root / "raw"
+            merged_dir = root / "merged"
+            raw_dir.mkdir()
+            merged_dir.mkdir()
+            (raw_dir / "HealthAll_legacy.zip").write_bytes(b"legacy")
+            first = merged_dir / "health-merged-20260824-120000.json"
+            second = merged_dir / "health-merged-20260825-000000.json"
+            first.write_text("{}", encoding="utf-8")
+            second.write_text("{}", encoding="utf-8")
+
+            sources = find_export_sources(None, raw_dir=raw_dir, merged_dir=merged_dir)
+
+        self.assertEqual([first, second], sources)
+
+    def test_apple_health_latest_merged_export_day_is_partial_by_default(self) -> None:
+        first = date(2026, 8, 24)
+        latest = date(2026, 8, 25)
+        args = SimpleNamespace(start=None, end=None, keep_current_day=False)
+
+        start, end = choose_date_window(
+            args,
+            {first: {"steps_est": 100}, latest: {"heart_avg_bpm": 70}},
+            {first, latest},
+            trailing_partial_date=latest,
+        )
+
+        self.assertEqual(first, start)
+        self.assertEqual(first, end)
 
 
 if __name__ == "__main__":

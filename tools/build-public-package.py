@@ -16,7 +16,7 @@ import zipfile
 
 
 PLUGIN = "fitness-data-bridge"
-VERSION = "1.0.6"
+VERSION = "1.0.7"
 MARKETPLACE_OWNER = "shujian-agent"
 COMPONENT_PACKAGE_TYPE = "shujian-component-release"
 PUBLIC_DIRECTORIES = (
@@ -200,7 +200,7 @@ def build(args: argparse.Namespace) -> dict:
         "marketplace": MARKETPLACE_OWNER,
         "plugin": PLUGIN,
         "version": VERSION,
-        "requires": ["fitness-planner>=2.0.5"],
+        "requires": ["fitness-planner>=2.0.6"],
     }:
         raise BuildError("Compatibility template does not match the release identity.")
 

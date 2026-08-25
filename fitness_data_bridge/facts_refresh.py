@@ -41,7 +41,7 @@ FITNESS_ROOT = Path.cwd()
 CACHE_DIR = FITNESS_ROOT / "数据" / "训练" / "xunji" / "mac_student_facts"
 RAW_CACHE_DIR = FITNESS_ROOT / "运行" / "cache" / "xunji" / "mac_localtrains"
 LOG_PATH = FITNESS_ROOT / "运行" / "logs" / "fitness-planner" / "weekly_training_refresh.log"
-SYNC_DOC = PLUGIN_ROOT / "skills" / "fitness-ops" / "references" / "operations.md"
+SYNC_DOC = PLUGIN_ROOT / "skills" / "fitness-data-bridge" / "references" / "operations.md"
 SYNFIT_APP = Path("/Applications/SynFit.app")
 REQUIRED_LOCALTRAINS_COLUMNS = {
     "id",
@@ -276,18 +276,54 @@ def query_recent_pending(db_path: Path, start: date, end: date) -> list[dict[str
     return pending
 
 
-def wait_for_db_state(db_path: Path, week: WeekRange, timeout_seconds: int) -> tuple[bool, list[dict[str, Any]]]:
+def sync_signature(db_path: Path, week: WeekRange) -> tuple[int, int, int]:
+    """Return a low-cost signature used to avoid reading a moving SynFit DB."""
+
+    query_end = min(week.end, now().date())
+    if query_end < week.start:
+        return (0, 0, 0)
+    with closing(sqlite3.connect(db_path)) as conn:
+        row = conn.execute(
+            """
+            select count(*), coalesce(max(version), 0),
+                   coalesce(sum(length(coalesce(movement, ''))), 0)
+            from localtrains
+            where datestr between ? and ?
+              and coalesce(delflag, 0) = 0
+            """,
+            (week.start.isoformat(), query_end.isoformat()),
+        ).fetchone()
+    return (int(row[0]), int(row[1]), int(row[2]))
+
+
+def wait_for_db_state(
+    db_path: Path,
+    week: WeekRange,
+    timeout_seconds: int,
+    *,
+    settle_seconds: int = 15,
+) -> tuple[bool, list[dict[str, Any]]]:
     deadline = time.time() + timeout_seconds
     last_pending: list[dict[str, Any]] = []
+    stable_since: float | None = None
+    last_signature: tuple[int, int, int] | None = None
     while time.time() < deadline:
         try:
             last_pending = query_recent_pending(db_path, week.start, week.end)
+            signature = sync_signature(db_path, week)
         except sqlite3.Error:
+            stable_since = None
+            last_signature = None
             time.sleep(3)
             continue
-        if not last_pending:
+        if last_pending:
+            stable_since = None
+        elif signature != last_signature:
+            stable_since = time.time()
+        elif stable_since is not None and time.time() - stable_since >= settle_seconds:
             return True, []
-        time.sleep(5)
+        last_signature = signature
+        time.sleep(min(3, max(1, settle_seconds)))
     return False, last_pending
 
 
@@ -361,25 +397,38 @@ def is_done_set(set_obj: dict[str, Any], completed_row: bool) -> bool:
     return completed_row
 
 
-def simplify_set(set_obj: dict[str, Any], completed_row: bool) -> dict[str, Any]:
+def simplify_set(
+    set_obj: dict[str, Any], completed_row: bool, *, single_side: bool
+) -> dict[str, Any]:
     return {
         "set_type": set_obj.get("setType") or "",
         "weight": set_obj.get("weight"),
+        "left_weight": set_obj.get("leftWeight"),
         "reps": set_obj.get("reps"),
         "time": set_obj.get("time"),
         "done": is_done_set(set_obj, completed_row),
         "dropset": set_obj.get("dropset"),
+        "unit": set_obj.get("unit") or "",
+        "self_weight": bool(set_obj.get("selfWeight")),
+        "single_side": single_side,
     }
 
 
 def analyze_action(action: dict[str, Any], completed_row: bool) -> dict[str, Any]:
     sets = action.get("sets") if isinstance(action.get("sets"), list) else []
-    simplified_sets = [simplify_set(item, completed_row) for item in sets if isinstance(item, dict)]
+    single_side = bool(action.get("singleSide"))
+    simplified_sets = [
+        simplify_set(item, completed_row, single_side=single_side)
+        for item in sets
+        if isinstance(item, dict)
+    ]
     exetype = action.get("exetype")
     done_sets = [item for item in simplified_sets if item["done"]]
     heat_sets = [item for item in done_sets if item.get("set_type") == "热"]
     counted_sets = 0
+    counted_side_sets = 0
     counted_reps = 0
+    counted_side_reps = 0
     counted_tonnage = 0.0
     max_weight: float | None = None
 
@@ -393,9 +442,19 @@ def analyze_action(action: dict[str, Any], completed_row: bool) -> dict[str, Any
                 continue
             counted_sets += 1
             counted_reps += int(reps)
+            counted_side_sets += 2 if single_side else 1
+            counted_side_reps += int(reps) * (2 if single_side else 1)
             if exetype == "weight" and weight is not None:
                 counted_tonnage += weight * reps
                 max_weight = weight if max_weight is None else max(max_weight, weight)
+            left_weight = number_value(item.get("left_weight"))
+            if exetype == "weight" and single_side and left_weight is not None:
+                counted_tonnage += left_weight * reps
+                max_weight = (
+                    left_weight
+                    if max_weight is None
+                    else max(max_weight, left_weight)
+                )
 
     return {
         "key": action.get("key"),
@@ -405,12 +464,15 @@ def analyze_action(action: dict[str, Any], completed_row: bool) -> dict[str, Any
         "difficulty": normalize_difficulty(action.get("difficulty")),
         "difficulty_label": DIFFICULTY_LABELS.get(normalize_difficulty(action.get("difficulty")), ""),
         "note": action.get("note") or "",
+        "single_side": single_side,
         "set_count": len(simplified_sets),
         "done_sets": len(done_sets),
         "heat_sets": len(heat_sets),
         "undone_sets": max(0, len(simplified_sets) - len(done_sets)),
         "counted_sets": counted_sets,
+        "counted_side_sets": counted_side_sets,
         "counted_reps": counted_reps,
+        "counted_side_reps": counted_side_reps,
         "counted_tonnage": round(counted_tonnage),
         "max_weight": max_weight,
         "sets": simplified_sets,
@@ -463,6 +525,7 @@ def query_week_records(db_path: Path, week: WeekRange) -> list[dict[str, Any]]:
                 "start": row_dict.get("start"),
                 "end": row_dict.get("end"),
                 "note_text": note_text(row_dict.get("note")),
+                "experience_text": note_text(row_dict.get("note")),
                 "sync_type": row_dict.get("sync_type"),
                 "version": row_dict.get("version"),
                 "is_rest": is_rest,
@@ -470,8 +533,10 @@ def query_week_records(db_path: Path, week: WeekRange) -> list[dict[str, Any]]:
                 "is_cardio": is_cardio,
                 "is_strength": is_strength,
                 "sets": sum(int(action["counted_sets"]) for action in actions),
+                "side_sets": sum(int(action["counted_side_sets"]) for action in actions),
                 "heat_sets": sum(int(action["heat_sets"]) for action in actions),
                 "reps": sum(int(action["counted_reps"]) for action in actions),
+                "side_reps": sum(int(action["counted_side_reps"]) for action in actions),
                 "tonnage": sum(int(action["counted_tonnage"]) for action in actions),
                 "parts": dict(parts),
                 "actions": actions,
@@ -498,8 +563,10 @@ def build_summary(records: list[dict[str, Any]], week: WeekRange) -> dict[str, A
                 "cardio": sum(1 for item in day_records if item["is_cardio"] and item["is_completed"]),
                 "rest_or_plan": sum(1 for item in day_records if item["is_rest"] or not item["is_completed"]),
                 "sets": sum(int(item["sets"]) for item in day_records if item["is_completed"]),
+                "side_sets": sum(int(item["side_sets"]) for item in day_records if item["is_completed"]),
                 "heat_sets": sum(int(item["heat_sets"]) for item in day_records if item["is_completed"]),
                 "reps": sum(int(item["reps"]) for item in day_records if item["is_completed"]),
+                "side_reps": sum(int(item["side_reps"]) for item in day_records if item["is_completed"]),
                 "tonnage": sum(int(item["tonnage"]) for item in day_records if item["is_completed"]),
                 "titles": [item["title"] for item in day_records],
                 "notes": [item["note_text"] for item in day_records if item.get("note_text")],
@@ -546,8 +613,10 @@ def build_summary(records: list[dict[str, Any]], week: WeekRange) -> dict[str, A
         "cardio_records": sum(1 for item in completed if item["is_cardio"]),
         "rest_or_plan_records": sum(1 for item in records if item["is_rest"] or not item["is_completed"]),
         "sets": sum(int(item["sets"]) for item in completed),
+        "side_sets": sum(int(item["side_sets"]) for item in completed),
         "heat_sets": sum(int(item["heat_sets"]) for item in completed),
         "reps": sum(int(item["reps"]) for item in completed),
+        "side_reps": sum(int(item["side_reps"]) for item in completed),
         "tonnage": sum(int(item["tonnage"]) for item in completed),
         "daily": daily,
         "top_actions_by_sets": action_counter.most_common(20),
@@ -566,12 +635,41 @@ def build_summary(records: list[dict[str, Any]], week: WeekRange) -> dict[str, A
             for item in completed
             if item.get("note_text")
         ],
+        "experience_feedback": [
+            {
+                "date": item["datestr"],
+                "title": item["title"],
+                "text": item["experience_text"],
+            }
+            for item in completed
+            if item.get("experience_text")
+        ],
+        "action_feedback": [
+            {
+                "date": item["datestr"],
+                "title": item["title"],
+                "action_key": action.get("key"),
+                "label": action.get("label") or "",
+                "text": action.get("note") or "",
+            }
+            for item in completed
+            for action in item["actions"]
+            if action.get("note")
+        ],
     }
 
 
 def facts_hash(payload: dict[str, Any]) -> str:
     text = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def build_markdown_summary(path: Path, payload: dict[str, Any]) -> str:
@@ -598,7 +696,8 @@ def build_markdown_summary(path: Path, payload: dict[str, Any]) -> str:
         f"- 力量记录：{summary['strength_records']} 条；"
         f"有氧记录：{summary['cardio_records']} 条；"
         f"休息或未完成计划记录：{summary['rest_or_plan_records']} 条。",
-        f"- 力量合计：正式工作组 {summary['sets']} 组，"
+        f"- 力量合计：训记记录组 {summary['sets']} 组，"
+        f"左右展开后侧组 {summary['side_sets']} 组，"
         f"热身组 {summary['heat_sets']} 组，正式次数 {summary['reps']} 次，"
         f"估算总吨位 {summary['tonnage']} kg。",
         "",
@@ -635,13 +734,20 @@ def build_markdown_summary(path: Path, payload: dict[str, Any]) -> str:
             )
     else:
         lines.append("无动作级主观难度标记。")
-    lines.extend(["", "## 备注事实", ""])
-    if summary["notes"]:
-        for item in summary["notes"]:
-            text = str(item["note"]).replace("\n", "；")
+    lines.extend(["", "## 训练心得事实", ""])
+    if summary["experience_feedback"]:
+        for item in summary["experience_feedback"]:
+            text = str(item["text"]).replace("\n", "；")
             lines.append(f"- {item['date']} {item['title']}：{text}")
     else:
-        lines.append("无训练备注。")
+        lines.append("无训练心得。")
+    lines.extend(["", "## 动作备注事实", ""])
+    if summary["action_feedback"]:
+        for item in summary["action_feedback"]:
+            text = str(item["text"]).replace("\n", "；")
+            lines.append(f"- {item['date']} {item['title']} / {item['label']}：{text}")
+    else:
+        lines.append("无动作备注。")
     if sync["pending_rows"]:
         lines.extend(["", "## 同步未确认记录", ""])
         lines.extend(["| 日期 | 标题 | start | end | sync_type |", "|---|---|---:|---:|---|"])
@@ -673,6 +779,12 @@ def build_parser() -> argparse.ArgumentParser:
     group.add_argument("--week-start", help="周一日期，格式 YYYY-MM-DD。默认当前周。")
     group.add_argument("--previous-week", action="store_true", help="采集上一个完整自然周。")
     parser.add_argument("--sync-wait", type=int, default=90, help="等待本地库同步的秒数，默认 90。")
+    parser.add_argument(
+        "--settle-seconds",
+        type=int,
+        default=15,
+        help="同步字段完成后要求数据库内容保持稳定的秒数，默认 15。",
+    )
     parser.add_argument("--process-wait", type=int, default=45, help="等待 SynFit 进程出现的秒数，默认 45。")
     parser.add_argument(
         "--no-launch",
@@ -704,7 +816,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         launch_synfit()
         launched = True
     processes = wait_for_process(args.process_wait) if not args.no_launch else process_snapshot()
-    sync_completed, pending_rows = wait_for_db_state(db_path, week, args.sync_wait)
+    if args.settle_seconds < 0:
+        raise RefreshError("--settle-seconds 不得为负数")
+    sync_completed, pending_rows = wait_for_db_state(
+        db_path,
+        week,
+        args.sync_wait,
+        settle_seconds=args.settle_seconds,
+    )
     records = query_week_records(db_path, week)
     summary = build_summary(records, week)
     planning_eligible, planning_eligibility_reason = planning_eligibility(
@@ -720,7 +839,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     )
 
     payload = {
-        "facts_schema_version": 2,
+        "facts_schema_version": 3,
         "source": source,
         "generated_at": fmt_now(),
         "planning_eligible": planning_eligible,
@@ -781,6 +900,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         if atomic_write_text(latest_path, latest_text):
             changed_files.append(str(latest_path.relative_to(FITNESS_ROOT)))
 
+        output_sha256 = {
+            str(path.relative_to(FITNESS_ROOT)): file_sha256(path)
+            for path in output_paths
+            if path.exists()
+        }
+
         state.update(
             {
                 "last_week_key": week.key,
@@ -789,11 +914,17 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "last_source": payload["source"],
                 "last_planning_eligible": planning_eligible,
                 "last_changed_files": changed_files,
+                "last_output_sha256": output_sha256,
             }
         )
         if atomic_write_json(state_path, state):
             changed_files.append(str(state_path.relative_to(FITNESS_ROOT)))
 
+    output_sha256 = {
+        str(path.relative_to(FITNESS_ROOT)): file_sha256(path)
+        for path in output_paths
+        if path.exists()
+    }
     status = "test_only" if not planning_eligible else ("changed" if changed_files else "unchanged")
     log_lines.extend(
         [
@@ -830,6 +961,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "pending_rows": len(pending_rows),
         "facts_path": str(facts_path),
         "summary_path": str(summary_path),
+        "output_sha256": output_sha256,
     }
 
 

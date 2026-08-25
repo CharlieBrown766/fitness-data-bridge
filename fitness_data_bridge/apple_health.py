@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import csv
 import hashlib
+import json
 import math
 import re
 import shutil
@@ -26,16 +27,22 @@ except ZoneInfoNotFoundError:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Import Simple Health Export CSV zip and generate health-metric summaries."
+        description=(
+            "Import overlapping Apple Health merged JSON snapshots or a legacy "
+            "Simple Health Export CSV zip and generate health-metric summaries."
+        )
     )
     parser.add_argument(
         "--workspace",
         help="Fitness workspace root. Defaults to FITNESS_WORKSPACE or discovery from the current directory.",
     )
     parser.add_argument(
-        "zip_path",
+        "export_path",
         nargs="?",
-        help="HealthAll_*.zip path. If omitted, use the newest zip in 数据/体况/apple-health/raw/.",
+        help=(
+            "A health-merged-*.json or legacy HealthAll_*.zip path. If omitted, "
+            "aggregate every merged JSON snapshot, falling back to the newest legacy zip."
+        ),
     )
     parser.add_argument("--start", help="Start date, YYYY-MM-DD. Defaults to earliest key metric date.")
     parser.add_argument("--end", help="End date, YYYY-MM-DD. Defaults to latest complete key metric date.")
@@ -57,23 +64,36 @@ def ensure_dirs(*directories: Path) -> None:
         directory.mkdir(parents=True, exist_ok=True)
 
 
-def find_export_zip(
+def find_export_sources(
     explicit_path: str | None,
     *,
     raw_dir: Path,
-) -> Path:
+    merged_dir: Path,
+) -> list[Path]:
     if explicit_path:
         path = Path(explicit_path).expanduser()
         if not path.is_absolute():
             path = (Path.cwd() / path).resolve()
-        if not path.exists():
+        if not path.is_file():
             raise FileNotFoundError(path)
-        return path
+        if path.suffix.lower() not in {".json", ".zip"}:
+            raise ValueError(f"Unsupported Apple Health export: {path}")
+        return [path]
+
+    merged_candidates = sorted(
+        merged_dir.glob("health-merged-*.json"),
+        key=lambda path: (path.name, path.stat().st_mtime_ns),
+    )
+    if merged_candidates:
+        return merged_candidates
 
     candidates = list(raw_dir.glob("HealthAll_*.zip"))
     if not candidates:
-        raise FileNotFoundError("No HealthAll_*.zip found in 数据/体况/apple-health/raw/.")
-    return max(candidates, key=lambda p: p.stat().st_mtime)
+        raise FileNotFoundError(
+            "No health-merged-*.json found in 数据/体况/apple-health/merged/ "
+            "and no HealthAll_*.zip found in 数据/体况/apple-health/raw/."
+        )
+    return [max(candidates, key=lambda p: p.stat().st_mtime)]
 
 
 def file_sha256(path: Path) -> str:
@@ -121,20 +141,116 @@ def find_member(names: list[str], prefix: str) -> str | None:
 def parse_dt(value: str | None) -> datetime | None:
     if not value:
         return None
+    candidate = str(value).strip()
     try:
-        return datetime.strptime(value, "%Y-%m-%d %H:%M:%S %z").astimezone(TZ)
+        parsed = datetime.fromisoformat(candidate.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            return None
+        return parsed.astimezone(TZ)
+    except ValueError:
+        pass
+    try:
+        return datetime.strptime(candidate, "%Y-%m-%d %H:%M:%S %z").astimezone(TZ)
     except ValueError:
         return None
 
 
-def parse_float(value: str | None) -> float:
+def parse_float(value: object | None) -> float:
     if value is None or value == "":
         return math.nan
     try:
         return float(value)
-    except ValueError:
-        match = re.search(r"[-+]?\d*\.?\d+", value)
+    except (TypeError, ValueError):
+        match = re.search(r"[-+]?\d*\.?\d+", str(value))
         return float(match.group()) if match else math.nan
+
+
+MERGED_SCHEMA_VERSION = "apple-health-fitness-merged-v1"
+MERGED_DEDUPE_FIELDS = ("type", "startDate", "endDate", "value", "unit", "source")
+SLEEP_VALUE_NAMES = {
+    "0": "inBed",
+    "1": "asleepUnspecified",
+    "2": "awake",
+    "3": "asleepCore",
+    "4": "asleepDeep",
+    "5": "asleepREM",
+    "6": "asleepUnspecified",
+}
+
+
+def _record_dedupe_key(record: dict[str, object], bucket_type: str) -> tuple[str, ...]:
+    declared = record.get("dedupe_key")
+    source = declared if isinstance(declared, dict) else record
+    values: list[str] = []
+    for field in MERGED_DEDUPE_FIELDS:
+        value = source.get(field)
+        if field == "type" and value in (None, ""):
+            value = bucket_type
+        values.append(json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
+    return tuple(values)
+
+
+def _normalize_merged_record(bucket_type: str, record: dict[str, object]) -> dict[str, object]:
+    value = record.get("value")
+    unit = str(record.get("unit") or "")
+    if bucket_type == "sleep":
+        numeric = str(value)
+        if numeric.endswith(".0"):
+            numeric = numeric[:-2]
+        value = SLEEP_VALUE_NAMES.get(numeric, value)
+    elif bucket_type == "oxygen-saturation" and unit == "%":
+        numeric_value = parse_float(value)
+        if math.isfinite(numeric_value):
+            value = numeric_value / 100
+
+    return {
+        "type": str(record.get("type") or bucket_type),
+        "startDate": record.get("startDate"),
+        "endDate": record.get("endDate"),
+        "value": value,
+        "unit": unit,
+        "sourceName": str(record.get("source") or "unknown"),
+    }
+
+
+def load_merged_snapshots(
+    paths: list[Path],
+) -> tuple[dict[str, list[dict[str, object]]], int, int, datetime | None]:
+    deduped: dict[tuple[str, ...], tuple[str, dict[str, object]]] = {}
+    scanned_records = 0
+    latest_generated_at: datetime | None = None
+
+    for path in sorted(paths, key=lambda item: (item.name, item.stat().st_mtime_ns)):
+        payload = json.loads(path.read_text(encoding="utf-8-sig"))
+        if not isinstance(payload, dict) or payload.get("schema_version") != MERGED_SCHEMA_VERSION:
+            raise ValueError(f"Unsupported merged Apple Health schema in {path}")
+        data_types = payload.get("data_types")
+        if not isinstance(data_types, dict):
+            raise ValueError(f"Merged Apple Health data_types must be an object in {path}")
+
+        generated_at = parse_dt(payload.get("generated_at"))
+        if generated_at and (latest_generated_at is None or generated_at > latest_generated_at):
+            latest_generated_at = generated_at
+
+        for bucket_type, bucket in data_types.items():
+            if not isinstance(bucket_type, str) or not isinstance(bucket, dict):
+                raise ValueError(f"Invalid merged Apple Health data type bucket in {path}")
+            records = bucket.get("records")
+            if not isinstance(records, list):
+                raise ValueError(f"Merged Apple Health records must be an array for {bucket_type} in {path}")
+            for record in records:
+                if not isinstance(record, dict):
+                    raise ValueError(f"Merged Apple Health record must be an object for {bucket_type} in {path}")
+                scanned_records += 1
+                key = _record_dedupe_key(record, bucket_type)
+                deduped[key] = (bucket_type, _normalize_merged_record(bucket_type, record))
+
+    record_sets: dict[str, list[dict[str, object]]] = defaultdict(list)
+    for bucket_type, record in deduped.values():
+        record_sets[bucket_type].append(record)
+    for records in record_sets.values():
+        records.sort(key=lambda row: (str(row.get("startDate") or ""), str(row.get("endDate") or "")))
+    return dict(record_sets), scanned_records, scanned_records - len(deduped), latest_generated_at
 
 
 def fmt_num(value: float | None, digits: int = 2) -> str:
@@ -347,8 +463,57 @@ def parse_workouts(
     return workouts
 
 
+def populate_daily_metrics(
+    record_sets: dict[str, list[dict[str, object]]],
+) -> tuple[dict[date, dict[str, object]], set[date], list[tuple[datetime, float]]]:
+    daily: dict[date, dict[str, object]] = defaultdict(dict)
+    seen_dates: set[date] = set()
+
+    def rows(name: str) -> list[dict[str, object]]:
+        return record_sets.get(name, [])
+
+    seen_dates |= add_source_sum_metric(daily, rows("steps"), "steps_raw_sum", "steps_est")
+    seen_dates |= add_source_sum_metric(
+        daily,
+        rows("distance-walking-running"),
+        "walkrun_km_raw_sum",
+        "walkrun_km_est",
+    )
+    seen_dates |= add_sum_metric(daily, rows("active-energy"), "active_kcal")
+    seen_dates |= add_sum_metric(daily, rows("apple-exercise-time"), "exercise_min")
+    seen_dates |= add_sum_metric(daily, rows("apple-stand-time"), "stand_min")
+    seen_dates |= add_sum_metric(daily, rows("distance-cycling"), "cycling_km")
+    seen_dates |= add_sum_metric(daily, rows("flights-climbed"), "flights")
+    seen_dates |= add_mean_metric(daily, rows("resting-heart-rate"), "rhr_bpm", "endDate")
+    seen_dates |= add_mean_metric(daily, rows("hrv-sdnn"), "hrv_ms")
+    seen_dates |= add_mean_metric(daily, rows("respiratory-rate"), "resp_rate_bpm")
+    seen_dates |= add_mean_metric(
+        daily,
+        rows("oxygen-saturation"),
+        "spo2_pct",
+        multiplier=100,
+    )
+    seen_dates |= add_last_metric(daily, rows("body-mass"), "weight_kg")
+    seen_dates |= add_last_metric(
+        daily,
+        rows("body-fat-percentage"),
+        "bodyfat_pct",
+        multiplier=100,
+    )
+    seen_dates |= add_last_metric(daily, rows("lean-body-mass"), "lean_body_mass_kg")
+    seen_dates |= add_last_metric(daily, rows("vo2-max"), "vo2max")
+    heart_seen, heart_samples = add_heart_rate(daily, rows("heart-rate"))
+    seen_dates |= heart_seen
+    seen_dates |= add_sleep(daily, rows("sleep"))
+    return daily, seen_dates, heart_samples
+
+
 def choose_date_window(
-    args: argparse.Namespace, daily: dict[date, dict[str, object]], seen_dates: set[date]
+    args: argparse.Namespace,
+    daily: dict[date, dict[str, object]],
+    seen_dates: set[date],
+    *,
+    trailing_partial_date: date | None = None,
 ) -> tuple[date, date]:
     if args.start:
         start = date.fromisoformat(args.start)
@@ -360,15 +525,18 @@ def choose_date_window(
     else:
         end = max(seen_dates)
         if not args.keep_current_day:
-            last = daily[end]
-            has_partial_signature = (
-                "steps_est" in last
-                and "active_kcal" not in last
-                and "exercise_min" not in last
-                and end > start
-            )
-            if has_partial_signature:
+            if trailing_partial_date == end and end > start:
                 end = end - timedelta(days=1)
+            else:
+                last = daily[end]
+                has_partial_signature = (
+                    "steps_est" in last
+                    and "active_kcal" not in last
+                    and "exercise_min" not in last
+                    and end > start
+                )
+                if has_partial_signature:
+                    end = end - timedelta(days=1)
     return start, end
 
 
@@ -437,7 +605,11 @@ def write_daily_csv(rows: list[dict[str, object]], output_path: Path) -> None:
 
 
 def write_summary_md(
-    rows: list[dict[str, object]], workouts: list[dict[str, object]], zip_path: Path, csv_name: str, output_path: Path
+    rows: list[dict[str, object]],
+    workouts: list[dict[str, object]],
+    source_paths: list[Path],
+    csv_name: str,
+    output_path: Path,
 ) -> None:
     now = datetime.now(TZ).strftime("%Y-%m-%d %H:%M")
     created = now
@@ -471,13 +643,32 @@ def write_summary_md(
             )
         )
 
+    apple_health_dir = output_path.parent.parent.resolve()
+
+    def source_ref(path: Path) -> str:
+        try:
+            relative = path.resolve().relative_to(apple_health_dir)
+            return f"../{relative.as_posix()}"
+        except ValueError:
+            return path.name
+
+    if len(source_paths) == 1:
+        source_lines = [f"- 数据输入：`{source_ref(source_paths[0])}`"]
+    else:
+        source_lines = [
+            f"- 数据输入：{len(source_paths)} 个重叠合并快照。",
+            f"- 最早快照：`{source_ref(source_paths[0])}`",
+            f"- 最新快照：`{source_ref(source_paths[-1])}`",
+            "- 快照去重键：`type + startDate + endDate + value + unit + source`。",
+        ]
+
     lines = [
         f"> Created time: {created}",
         f"> Modified time: {now}",
         "",
         f"# 健康数据摘要：{rows[0]['date']} 至 {rows[-1]['date']}",
         "",
-        f"- 原始导出：`../raw/{zip_path.name}`",
+        *source_lines,
         f"- 日汇总 CSV：`{csv_name}`",
         "- 时区：Asia/Shanghai",
         "- 口径：步数和步行/跑步距离同时存在 iPhone 与 Apple Watch 来源，日汇总使用“按来源分别求和后取较大值”的保守估算，保留原始合计列用于排查。",
@@ -559,7 +750,7 @@ def write_summary_md(
             "",
             "- 本摘要和日汇总 CSV 是原始 Apple Health 导出的派生事实，不包含个人训练决策。",
             "- `steps_est` 是按来源分别求和后取较大值的保守去重估计；`steps_raw_sum` 保留用于核对。",
-            "- 原始 zip 保留在 `raw/`，用于复核清洗口径或补充指标。",
+            "- 原始导出和合并快照保留在各自数据目录，用于复核清洗口径或补充指标。",
             "",
         ]
     )
@@ -575,85 +766,79 @@ def main() -> None:
 
     apple_health_dir = layout.apple_health_dir
     raw_dir = apple_health_dir / "raw"
+    merged_dir = apple_health_dir / "merged"
     scratch_dir = apple_health_dir / "parsed"
-    ensure_dirs(raw_dir, scratch_dir, apple_health_dir)
-    zip_path = stage_source(
-        find_export_zip(
-            args.zip_path,
+    ensure_dirs(raw_dir, merged_dir, scratch_dir, apple_health_dir)
+    source_paths = [
+        stage_source(
+            path,
+            merged_dir if path.suffix.lower() == ".json" else raw_dir,
+            move_source=args.move_source,
+        )
+        for path in find_export_sources(
+            args.export_path,
             raw_dir=raw_dir,
-        ),
-        raw_dir,
-        move_source=args.move_source,
-    )
+            merged_dir=merged_dir,
+        )
+    ]
+    source_paths.sort(key=lambda path: (path.name, path.stat().st_mtime_ns))
 
-    daily: dict[date, dict[str, object]] = defaultdict(dict)
-    seen_dates: set[date] = set()
-    workouts: list[dict[str, object]]
+    trailing_partial_date: date | None = None
+    if all(path.suffix.lower() == ".json" for path in source_paths):
+        record_sets, scanned_records, duplicates_removed, latest_generated_at = load_merged_snapshots(
+            source_paths
+        )
+        daily, seen_dates, _ = populate_daily_metrics(record_sets)
+        workouts: list[dict[str, object]] = []
+        if latest_generated_at:
+            trailing_partial_date = latest_generated_at.date()
+        print(f"Merged snapshots: {len(source_paths)}")
+        print(f"Merged records:   {scanned_records - duplicates_removed}")
+        print(f"Duplicates:      {duplicates_removed}")
+    elif len(source_paths) == 1 and source_paths[0].suffix.lower() == ".zip":
+        zip_path = source_paths[0]
+        with zipfile.ZipFile(zip_path) as zf:
+            names = zf.namelist()
 
-    with zipfile.ZipFile(zip_path) as zf:
-        names = zf.namelist()
+            def legacy_rows(prefix: str) -> list[dict[str, str]]:
+                return read_csv_from_zip(zf, find_member(names, prefix))
 
-        def rows(prefix: str) -> list[dict[str, str]]:
-            return read_csv_from_zip(zf, find_member(names, prefix))
-
-        seen_dates |= add_source_sum_metric(
-            daily,
-            rows("HKQuantityTypeIdentifierStepCount_"),
-            "steps_raw_sum",
-            "steps_est",
-        )
-        seen_dates |= add_source_sum_metric(
-            daily,
-            rows("HKQuantityTypeIdentifierDistanceWalkingRunning_"),
-            "walkrun_km_raw_sum",
-            "walkrun_km_est",
-        )
-        seen_dates |= add_sum_metric(daily, rows("HKQuantityTypeIdentifierActiveEnergyBurned_"), "active_kcal")
-        seen_dates |= add_sum_metric(daily, rows("HKQuantityTypeIdentifierAppleExerciseTime_"), "exercise_min")
-        seen_dates |= add_sum_metric(daily, rows("HKQuantityTypeIdentifierAppleStandTime_"), "stand_min")
-        seen_dates |= add_sum_metric(daily, rows("HKQuantityTypeIdentifierDistanceCycling_"), "cycling_km")
-        seen_dates |= add_sum_metric(daily, rows("HKQuantityTypeIdentifierFlightsClimbed_"), "flights")
-        seen_dates |= add_mean_metric(
-            daily,
-            rows("HKQuantityTypeIdentifierRestingHeartRate_"),
-            "rhr_bpm",
-            "endDate",
-        )
-        seen_dates |= add_mean_metric(
-            daily,
-            rows("HKQuantityTypeIdentifierHeartRateVariabilitySDNN_"),
-            "hrv_ms",
-        )
-        seen_dates |= add_mean_metric(
-            daily,
-            rows("HKQuantityTypeIdentifierRespiratoryRate_"),
-            "resp_rate_bpm",
-        )
-        seen_dates |= add_mean_metric(
-            daily,
-            rows("HKQuantityTypeIdentifierOxygenSaturation_"),
-            "spo2_pct",
-            multiplier=100,
-        )
-        seen_dates |= add_last_metric(daily, rows("HKQuantityTypeIdentifierBodyMass_"), "weight_kg")
-        seen_dates |= add_last_metric(
-            daily,
-            rows("HKQuantityTypeIdentifierBodyFatPercentage_"),
-            "bodyfat_pct",
-            multiplier=100,
-        )
-        seen_dates |= add_last_metric(daily, rows("HKQuantityTypeIdentifierLeanBodyMass_"), "lean_body_mass_kg")
-        seen_dates |= add_last_metric(daily, rows("HKQuantityTypeIdentifierVO2Max_"), "vo2max")
-        hr_seen, heart_samples = add_heart_rate(daily, rows("HKQuantityTypeIdentifierHeartRate_"))
-        seen_dates |= hr_seen
-        seen_dates |= add_sleep(daily, rows("HKCategoryTypeIdentifierSleepAnalysis_"))
-        workouts = parse_workouts(zf, names, daily, heart_samples)
-        seen_dates |= {workout["date"] for workout in workouts}
+            record_sets = {
+                "steps": legacy_rows("HKQuantityTypeIdentifierStepCount_"),
+                "distance-walking-running": legacy_rows(
+                    "HKQuantityTypeIdentifierDistanceWalkingRunning_"
+                ),
+                "active-energy": legacy_rows("HKQuantityTypeIdentifierActiveEnergyBurned_"),
+                "apple-exercise-time": legacy_rows("HKQuantityTypeIdentifierAppleExerciseTime_"),
+                "apple-stand-time": legacy_rows("HKQuantityTypeIdentifierAppleStandTime_"),
+                "distance-cycling": legacy_rows("HKQuantityTypeIdentifierDistanceCycling_"),
+                "flights-climbed": legacy_rows("HKQuantityTypeIdentifierFlightsClimbed_"),
+                "resting-heart-rate": legacy_rows("HKQuantityTypeIdentifierRestingHeartRate_"),
+                "hrv-sdnn": legacy_rows("HKQuantityTypeIdentifierHeartRateVariabilitySDNN_"),
+                "respiratory-rate": legacy_rows("HKQuantityTypeIdentifierRespiratoryRate_"),
+                "oxygen-saturation": legacy_rows("HKQuantityTypeIdentifierOxygenSaturation_"),
+                "body-mass": legacy_rows("HKQuantityTypeIdentifierBodyMass_"),
+                "body-fat-percentage": legacy_rows("HKQuantityTypeIdentifierBodyFatPercentage_"),
+                "lean-body-mass": legacy_rows("HKQuantityTypeIdentifierLeanBodyMass_"),
+                "vo2-max": legacy_rows("HKQuantityTypeIdentifierVO2Max_"),
+                "heart-rate": legacy_rows("HKQuantityTypeIdentifierHeartRate_"),
+                "sleep": legacy_rows("HKCategoryTypeIdentifierSleepAnalysis_"),
+            }
+            daily, seen_dates, heart_samples = populate_daily_metrics(record_sets)
+            workouts = parse_workouts(zf, names, daily, heart_samples)
+            seen_dates |= {workout["date"] for workout in workouts}
+    else:
+        raise ValueError("Apple Health import cannot mix merged JSON snapshots and legacy zip exports")
 
     if not seen_dates:
-        raise RuntimeError(f"No usable records found in {zip_path}")
+        raise RuntimeError(f"No usable records found in {', '.join(str(path) for path in source_paths)}")
 
-    start, end = choose_date_window(args, daily, seen_dates)
+    start, end = choose_date_window(
+        args,
+        daily,
+        seen_dates,
+        trailing_partial_date=trailing_partial_date,
+    )
     output_rows = []
     for day in date_range(start, end):
         row = {"date": day.isoformat()}
@@ -663,9 +848,9 @@ def main() -> None:
     csv_path = scratch_dir / f"每日恢复与活动_{start.isoformat()}_to_{end.isoformat()}.csv"
     md_path = scratch_dir / f"健康数据摘要_{start.isoformat()}_to_{end.isoformat()}.md"
     write_daily_csv(output_rows, csv_path)
-    write_summary_md(output_rows, workouts, zip_path, csv_path.name, md_path)
+    write_summary_md(output_rows, workouts, source_paths, csv_path.name, md_path)
 
-    print(f"Raw export: {zip_path}")
+    print(f"Input latest: {source_paths[-1]}")
     print(f"Daily CSV:  {csv_path}")
     print(f"Summary:    {md_path}")
 
