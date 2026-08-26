@@ -400,10 +400,15 @@ def is_done_set(set_obj: dict[str, Any], completed_row: bool) -> bool:
 def simplify_set(
     set_obj: dict[str, Any], completed_row: bool, *, single_side: bool
 ) -> dict[str, Any]:
+    local_left_weight = set_obj.get("left_weight")
+    if local_left_weight in (None, ""):
+        local_left_weight = set_obj.get("leftWeight")
     return {
         "set_type": set_obj.get("setType") or "",
         "weight": set_obj.get("weight"),
-        "left_weight": set_obj.get("leftWeight"),
+        # Mac-local Xunji rows use left_weight; API/watch payloads may expose
+        # the same value as leftWeight.  Preserve both inputs as one fact.
+        "left_weight": local_left_weight,
         "reps": set_obj.get("reps"),
         "time": set_obj.get("time"),
         "done": is_done_set(set_obj, completed_row),

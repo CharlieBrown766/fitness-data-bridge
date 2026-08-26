@@ -620,7 +620,8 @@ class DataBridgeTests(unittest.TestCase):
         movement = _xunji_movements(prescription, capabilities)[0]
         self.assertTrue(movement["singleSide"])
         self.assertEqual("10", movement["sets"][0]["weight"])
-        self.assertEqual("10", movement["sets"][0]["leftWeight"])
+        self.assertEqual("10", movement["sets"][0]["left_weight"])
+        self.assertNotIn("leftWeight", movement["sets"][0])
         self.assertEqual("左右动作幅度保持一致。", movement["note"])
         self.assertNotIn("must-not-export", json.dumps(movement, ensure_ascii=False))
 
@@ -650,6 +651,54 @@ class DataBridgeTests(unittest.TestCase):
         self.assertEqual(1, analyzed["counted_sets"])
         self.assertEqual(2, analyzed["counted_side_sets"])
         self.assertEqual(24, analyzed["counted_side_reps"])
+        self.assertEqual(240, analyzed["counted_tonnage"])
+
+    def test_facts_accept_local_sqlite_left_weight_field(self) -> None:
+        analyzed = analyze_action(
+            {
+                "key": "hammercurl",
+                "label": "锤式弯举",
+                "type": "手臂",
+                "exetype": "weight",
+                "singleSide": True,
+                "sets": [
+                    {
+                        "weight": "10",
+                        "left_weight": "10",
+                        "reps": "12",
+                        "unit": "kg",
+                        "done": True,
+                    }
+                ],
+            },
+            True,
+        )
+        self.assertEqual("10", analyzed["sets"][0]["left_weight"])
+        self.assertEqual(2, analyzed["counted_side_sets"])
+        self.assertEqual(240, analyzed["counted_tonnage"])
+
+    def test_facts_fall_back_from_blank_local_to_transport_left_weight(self) -> None:
+        analyzed = analyze_action(
+            {
+                "key": "hammercurl",
+                "label": "锤式弯举",
+                "type": "手臂",
+                "exetype": "weight",
+                "singleSide": True,
+                "sets": [
+                    {
+                        "weight": "10",
+                        "left_weight": "",
+                        "leftWeight": "10",
+                        "reps": "12",
+                        "unit": "kg",
+                        "done": True,
+                    }
+                ],
+            },
+            True,
+        )
+        self.assertEqual("10", analyzed["sets"][0]["left_weight"])
         self.assertEqual(240, analyzed["counted_tonnage"])
 
     def test_synfit_is_restarted_when_already_running(self) -> None:
@@ -703,6 +752,31 @@ class DataBridgeTests(unittest.TestCase):
             )
             self.assertEqual("2026-08-20", projection["replacement_window"]["start"])
             self.assertEqual("2026-08-25", projection["replacement_window"]["end"])
+
+    def test_later_release_revision_preserves_completed_sessions(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = WorkspaceFixture(Path(directory))
+            release = half_block_release()
+            completed = release["sessions"][0]
+            completed["schedule"]["state"] = "completed"
+            completed["execution"] = {
+                "completed_at": "2026-08-20T20:00:00+08:00",
+                "evidence_refs": ["xunji:completed-row"],
+                "actual": {"localid": 101},
+            }
+            projection = project_release(
+                validate_release(release), layout=WorkspaceLayout(fixture.root)
+            )
+            self.assertEqual(5, len(projection["app_records"]))
+            self.assertEqual(5, len(projection["calendar_events"]))
+            self.assertEqual("2026-08-21", projection["replacement_window"]["start"])
+            self.assertEqual(
+                [completed["session_id"]],
+                projection["source"]["immutable_completed_session_ids"],
+            )
+            self.assertNotIn(
+                completed["session_id"], projection["source"]["projected_session_ids"]
+            )
 
     def test_half_block_rejects_silent_empty_comparable_weight(self) -> None:
         release = half_block_release()

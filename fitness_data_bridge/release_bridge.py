@@ -139,8 +139,11 @@ def validate_release(release: Any, *, require_publishable: bool = True) -> dict[
         position = session["prescription"].get("cycle_position")
         if position not in HALVES[release_id]:
             raise ValidationError(f"{field} is outside the release half")
-        if require_publishable and session["schedule"]["state"] != "scheduled":
-            raise WriteGateError(f"{field} is not scheduled for publication")
+        state = session["schedule"]["state"]
+        if require_publishable and state not in {"scheduled", "completed"}:
+            raise WriteGateError(
+                f"{field} must be scheduled or an immutable completed session"
+            )
         try:
             dates.append(date.fromisoformat(str(session["schedule"]["scheduled_for"])))
         except ValueError as exc:
@@ -187,6 +190,13 @@ def project_release(
     validate_release(release)
     registry = registry or load_connector_registry(layout)
     capabilities = load_action_capabilities(layout)
+    scheduled_sessions = [
+        session
+        for session in release["sessions"]
+        if session["schedule"]["state"] == "scheduled"
+    ]
+    if not scheduled_sessions:
+        raise WriteGateError("Release has no scheduled sessions left to publish")
     projected = [
         project_session(
             session,
@@ -194,7 +204,7 @@ def project_release(
             registry=registry,
             capabilities=capabilities,
         )
-        for session in release["sessions"]
+        for session in scheduled_sessions
     ]
     dates = [event["date"] for item in projected for event in item["calendar_events"]]
     database_scope = [item for batch in projected for item in batch["database_delete_scope"]]
@@ -217,6 +227,14 @@ def project_release(
             "revision": release["revision"],
             "release_sha256": canonical_sha256(release),
             "session_ids": [item["session_id"] for item in release["sessions"]],
+            "projected_session_ids": [
+                item["session_id"] for item in scheduled_sessions
+            ],
+            "immutable_completed_session_ids": [
+                item["session_id"]
+                for item in release["sessions"]
+                if item["schedule"]["state"] == "completed"
+            ],
         },
         "replacement_window": {"start": min(dates), "end": max(dates)},
         "database_delete_scope": database_scope,

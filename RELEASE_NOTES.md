@@ -1,7 +1,20 @@
 > Created time: 2026-08-16 09:48
-> Modified time: 2026-08-25 17:36
+> Modified time: 2026-08-26 18:13
 
-# Fitness Data Bridge 1.0.7
+# Fitness Data Bridge 1.0.8
+
+- Corrects paired left/right publication for Mac-local Xunji rows by writing
+  `left_weight`, while retaining `leftWeight` as the API/watch transport alias.
+- Preserves left-side facts from local, API, watch and mixed legacy records,
+  including rows where a blank local alias accompanies a populated transport
+  alias.
+- Adds regression coverage for exact Mac-local projection and both supported
+  refresh shapes.
+- Preserves completed sessions during later half-Block revisions and projects
+  only the remaining scheduled sessions into Xunji and Calendar replacement
+  scopes.
+
+## Previous 1.0.7 release
 
 - Added first-class ingestion for overlapping `health-merged-*.json` Apple
   Health snapshots while retaining the legacy `HealthAll_*.zip` route.
@@ -11,8 +24,9 @@
   saturation, and treats the latest export day as partial by default.
 - Keeps personal exports out of the plugin by covering the new format with
   synthetic fixtures only.
-- Projects paired left/right prescriptions into Xunji `singleSide`, `weight`
-  and `leftWeight` fields and preserves side-level volume in refreshed facts.
+- Projects paired left/right prescriptions into Mac-local Xunji `singleSide`,
+  `weight` and `left_weight` fields, accepts the API/watch `leftWeight` alias
+  during refresh, and preserves side-level volume in refreshed facts.
 - Keeps Xunji training experience free of provenance markers, exports only
   explicit human-readable action instructions, and records session-to-Xunji
   identity mappings in publication receipts.

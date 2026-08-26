@@ -285,7 +285,10 @@ def _target_set(
     if movement_section == "main" and value.get("set_role") == "warmup":
         result["setType"] = "热"
     if paired_left_right:
-        result["leftWeight"] = _number(left_load)
+        # Xunji's localtrains movement JSON uses the snake-case field that
+        # the training UI reads directly.  leftWeight is a transport/watch
+        # shape and remains blank when written into the local SQLite row.
+        result["left_weight"] = _number(left_load)
     return result
 
 

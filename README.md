@@ -1,5 +1,5 @@
 > Created time: 2026-08-16 00:51
-> Modified time: 2026-08-25 17:20
+> Modified time: 2026-08-26 18:13
 
 # Fitness Data Bridge
 
@@ -18,7 +18,7 @@ It provides:
 - a v5.1 half-Block bridge that publishes all A1+B1 or A2+B2 sessions in one transaction/synchronization/Calendar/readback boundary;
 - a legacy next-session route retained only for compatibility.
 
-The Xunji adapter translates rule-model units into Xunji's native storage shape. Warm-up and cooldown movements default to Xunji's repetition-only record type; internal values such as `repetitions`, `warmup`, planning intent labels and provenance markers are not written into user-facing weight or note fields. Paired left/right prescriptions become one Xunji row with `weight`, `leftWeight` and movement-level `singleSide`; refreshed facts retain both side loads and normalized side-set volume.
+The Xunji adapter translates rule-model units into Xunji's native storage shape. Warm-up and cooldown movements default to Xunji's repetition-only record type; internal values such as `repetitions`, `warmup`, planning intent labels and provenance markers are not written into user-facing weight or note fields. Paired left/right prescriptions become one Mac-local Xunji row with `weight`, `left_weight` and movement-level `singleSide`; refreshed facts also accept the API/watch alias `leftWeight` and retain normalized side-set volume. Later half-Block revisions retain completed sessions in the governed identity while replacing only still-scheduled sessions.
 
 The plugin contains no personal records or credentials. `fitness-planner` remains the owner of generic rules and validators; the Fitness workspace remains the owner of user intent, capabilities, plans, formal data and runtime material. Canonical workspace paths are `用户/数据接入/`, `数据/`, `状态/`, `计划/`, and `运行/`.
 
