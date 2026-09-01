@@ -535,7 +535,7 @@ class DataBridgeTests(unittest.TestCase):
         self.assertEqual("kg", movement["sets"][0]["unit"])
         self.assertNotIn("setType", movement["sets"][0])
 
-    def test_cooldown_defaults_to_repetition_only_with_duration_note(self) -> None:
+    def test_cooldown_preserves_stretch_type_and_duration(self) -> None:
         prescription = {
             "movements": [
                 {
@@ -565,11 +565,11 @@ class DataBridgeTests(unittest.TestCase):
             }
         }
         movement = _xunji_movements(prescription, capabilities)[0]
-        self.assertEqual("", movement["exetype"])
+        self.assertEqual("stretch", movement["exetype"])
         self.assertEqual("低疲劳收操；每组保持 30 秒", movement["note"])
         self.assertEqual("kg", movement["sets"][0]["unit"])
         self.assertEqual("1", movement["sets"][0]["reps"])
-        self.assertEqual(0, movement["sets"][0]["time"])
+        self.assertEqual(30, movement["sets"][0]["time"])
 
     def test_paired_left_right_sets_project_exact_xunji_fields(self) -> None:
         prescription = {

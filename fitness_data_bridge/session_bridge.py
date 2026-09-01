@@ -263,7 +263,10 @@ def _target_set(
         left_load = None
         right_load = load
     source_unit = str(value.get("unit") or "kg")
-    repetition_only = movement_section in {"dynamic_warmup", "cooldown"}
+    # Dynamic warm-ups are ordinary unloaded repetition records in Xunji.
+    # Cooldown movements retain their action-specific write semantics; in
+    # particular, stretches store their prescribed duration in ``time``.
+    repetition_only = movement_section == "dynamic_warmup"
     result = {
         # This is Xunji's internal no-weight-field flag. It does not select
         # the user-facing "自身加重" record type when exetype is empty.
@@ -337,7 +340,7 @@ def _xunji_movements(
         ]
         movement_section = str(movement.get("section") or "")
         exetype = str(semantics.get("exetype", ""))
-        if movement_section in {"dynamic_warmup", "cooldown"}:
+        if movement_section == "dynamic_warmup":
             exetype = ""
         elif exetype in {"plus_weight", "times"} and all(
             item.get("load") is None

@@ -1,7 +1,16 @@
 > Created time: 2026-08-16 09:48
-> Modified time: 2026-08-26 18:13
+> Modified time: 2026-09-01 18:18
 
-# Fitness Data Bridge 1.0.8
+# Fitness Data Bridge 1.0.9
+
+- Preserves action-specific cooldown write semantics instead of forcing every
+  cooldown movement into a repetition-only Xunji record.
+- Projects prescribed stretch seconds into Xunji's `time` field while keeping
+  the human-readable duration instruction in the action note.
+- Adds regression coverage proving dynamic warm-ups remain repetition-only and
+  cooldown stretches retain `exetype=stretch` with the exact duration.
+
+## Previous 1.0.8 release
 
 - Corrects paired left/right publication for Mac-local Xunji rows by writing
   `left_weight`, while retaining `leftWeight` as the API/watch transport alias.
