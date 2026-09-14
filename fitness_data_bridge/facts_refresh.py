@@ -419,7 +419,8 @@ def simplify_set(
     }
 
 
-def analyze_action(action: dict[str, Any], completed_row: bool) -> dict[str, Any]:
+def analyze_action(action: dict[str, Any], completed_row: bool,
+                   capabilities: dict[str, dict[str, Any]] | None = None) -> dict[str, Any]:
     sets = action.get("sets") if isinstance(action.get("sets"), list) else []
     single_side = bool(action.get("singleSide"))
     simplified_sets = [
@@ -428,6 +429,18 @@ def analyze_action(action: dict[str, Any], completed_row: bool) -> dict[str, Any
         if isinstance(item, dict)
     ]
     exetype = action.get("exetype")
+    raw_exetype = exetype
+    normalization_basis = "source"
+    capability = (capabilities or {}).get(str(action.get("key")))
+    # Only a verified personal mapping may fill an absent recording type.
+    # Never reclassify unloaded warm-ups, or override an explicit source type.
+    has_load = any(number_value(s.get("weight")) is not None or
+                   number_value(s.get("left_weight")) is not None for s in simplified_sets)
+    if not exetype and has_load and capability and capability.get("label") == action.get("label"):
+        mapped = capability.get("write_semantics", {}).get("exetype")
+        if mapped in STRENGTH_EXETYPES:
+            exetype = mapped
+            normalization_basis = "personal_action_capabilities"
     done_sets = [item for item in simplified_sets if item["done"]]
     heat_sets = [item for item in done_sets if item.get("set_type") == "热"]
     counted_sets = 0
@@ -465,7 +478,13 @@ def analyze_action(action: dict[str, Any], completed_row: bool) -> dict[str, Any
         "key": action.get("key"),
         "label": action.get("label") or "",
         "type": action.get("type") or "",
-        "exetype": exetype or "",
+        "exetype": raw_exetype or "",
+        "normalized_exetype": exetype or "",
+        "normalization_basis": normalization_basis,
+        "unclassified_loaded_sets": sum(
+            1 for s in done_sets if s.get("set_type") != "热"
+            and (number_value(s.get("weight")) is not None or number_value(s.get("left_weight")) is not None)
+        ) if exetype not in STRENGTH_EXETYPES else 0,
         "difficulty": normalize_difficulty(action.get("difficulty")),
         "difficulty_label": DIFFICULTY_LABELS.get(normalize_difficulty(action.get("difficulty")), ""),
         "note": action.get("note") or "",
@@ -486,13 +505,14 @@ def analyze_action(action: dict[str, Any], completed_row: bool) -> dict[str, Any
 
 def classify_record(title: str, actions: list[dict[str, Any]], completed_row: bool) -> tuple[bool, bool, bool]:
     is_rest = "休息" in title or (not actions and not completed_row)
-    has_strength = any(action.get("exetype") in STRENGTH_EXETYPES for action in actions)
+    has_strength = any(action.get("normalized_exetype", action.get("exetype")) in STRENGTH_EXETYPES for action in actions)
     is_cardio = any(word in title for word in CARDIO_WORDS) and not has_strength
     is_strength = has_strength
     return is_rest, is_cardio, is_strength
 
 
-def query_week_records(db_path: Path, week: WeekRange) -> list[dict[str, Any]]:
+def query_week_records(db_path: Path, week: WeekRange,
+                       capabilities: dict[str, dict[str, Any]] | None = None) -> list[dict[str, Any]]:
     with closing(sqlite3.connect(db_path)) as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
@@ -513,7 +533,7 @@ def query_week_records(db_path: Path, week: WeekRange) -> list[dict[str, Any]]:
         if not isinstance(movement, list):
             movement = []
         completed_row = is_completed_time(row_dict.get("start"), row_dict.get("end"))
-        actions = [analyze_action(item, completed_row) for item in movement if isinstance(item, dict)]
+        actions = [analyze_action(item, completed_row, capabilities) for item in movement if isinstance(item, dict)]
         title = str(row_dict.get("title") or "")
         is_rest, is_cardio, is_strength = classify_record(title, actions, completed_row)
         parts: Counter[str] = Counter()
@@ -609,7 +629,15 @@ def build_summary(records: list[dict[str, Any]], week: WeekRange) -> dict[str, A
             part_counter[str(part)] += int(count)
 
     completed = [item for item in records if item["is_completed"]]
+    unresolved = [
+        {"record_id": r.get("id"), "date": r["datestr"], "action_key": a.get("key"),
+         "label": a.get("label"), "sets": a["unclassified_loaded_sets"]}
+        for r in completed for a in r["actions"] if a.get("unclassified_loaded_sets", 0)
+    ]
     return {
+        "statistics_complete": not unresolved,
+        "unclassified_loaded_actions": unresolved,
+        "unclassified_loaded_sets": sum(a["sets"] for a in unresolved),
         "week_start": week.start.isoformat(),
         "week_end": week.end.isoformat(),
         "record_count": len(records),
@@ -642,6 +670,8 @@ def build_summary(records: list[dict[str, Any]], week: WeekRange) -> dict[str, A
         ],
         "experience_feedback": [
             {
+                "record_id": item.get("id"),
+                "record_version": item.get("version"),
                 "date": item["datestr"],
                 "title": item["title"],
                 "text": item["experience_text"],
@@ -651,6 +681,9 @@ def build_summary(records: list[dict[str, Any]], week: WeekRange) -> dict[str, A
         ],
         "action_feedback": [
             {
+                "record_id": item.get("id"),
+                "record_version": item.get("version"),
+                "action_index": action_index,
                 "date": item["datestr"],
                 "title": item["title"],
                 "action_key": action.get("key"),
@@ -658,7 +691,7 @@ def build_summary(records: list[dict[str, Any]], week: WeekRange) -> dict[str, A
                 "text": action.get("note") or "",
             }
             for item in completed
-            for action in item["actions"]
+            for action_index, action in enumerate(item["actions"])
             if action.get("note")
         ],
     }
@@ -697,6 +730,7 @@ def build_markdown_summary(path: Path, payload: dict[str, Any]) -> str:
         "",
         "## 本周事实摘要",
         "",
+        f"- 统计完整性：{'完整' if summary.get('statistics_complete', False) else '不完整；不得把汇总当作全部训练量'}；未分类负重完成组：{summary.get('unclassified_loaded_sets', '未知')}。",
         f"- 训练记录：{summary['record_count']} 条；已完成：{summary['completed_records']} 条。",
         f"- 力量记录：{summary['strength_records']} 条；"
         f"有氧记录：{summary['cardio_records']} 条；"
@@ -829,7 +863,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         args.sync_wait,
         settle_seconds=args.settle_seconds,
     )
-    records = query_week_records(db_path, week)
+    from .session_bridge import load_action_capabilities
+    capabilities = load_action_capabilities(resolve_workspace(FITNESS_ROOT))
+    records = query_week_records(db_path, week, capabilities)
     summary = build_summary(records, week)
     planning_eligible, planning_eligibility_reason = planning_eligibility(
         launched=launched,
@@ -844,7 +880,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     )
 
     payload = {
-        "facts_schema_version": 3,
+        "facts_schema_version": 4,
+        "normalization_capabilities_sha256": facts_hash(capabilities),
+        "statistics_complete": summary["statistics_complete"],
         "source": source,
         "generated_at": fmt_now(),
         "planning_eligible": planning_eligible,
@@ -895,6 +933,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
     changed_files = []
     if not facts_unchanged:
+        # Keep content-addressed evidence before replacing the latest weekly view.
+        for path in (raw_path, facts_path):
+            if path.exists():
+                snapshot = path.parent / "history" / (file_sha256(path) + ".json")
+                if not snapshot.exists():
+                    atomic_write_text(snapshot, path.read_text(encoding="utf-8"))
         for path, writer_payload in ((raw_path, payload), (facts_path, payload)):
             if atomic_write_json(path, writer_payload):
                 changed_files.append(str(path.relative_to(FITNESS_ROOT)))

@@ -1,5 +1,5 @@
 > Created time: 2026-08-16 00:51
-> Modified time: 2026-08-25 17:20
+> Modified time: 2026-09-14 18:20
 
 # Operations
 
@@ -59,6 +59,12 @@ requested interval and run `facts_refresh --week-start YYYY-MM-DD` for each
 week. Verify that each week-specific facts file exists; `latest_summary.md`
 does not establish continuity. Formal Mac-local facts require the post-SynFit
 database signature to remain stable for the configured settle interval.
+
+## Review retained Xunji facts
+
+For retained Xunji facts, `python -m fitness_data_bridge.facts_review --workspace <Fitness> --facts <week.json> [<week.json> ...]` recalculates statistics using the hash-bound personal catalog, returns source hashes and traceable feedback, and proposes title-based session matches for review. It writes nothing and does not treat candidates as completed sessions. Use publication receipt identities and user corrections to resolve candidates. `source_sync_eligible` describes the original refresh; `statistics_complete` independently describes classification completeness. Missing historical mappings are personal-data work, not automatic plugin-development requests.
+
+Live refresh retains the prior raw/facts bytes in sibling `history/<sha256>.json` before replacing a weekly latest view. Bind plan evidence to a retained snapshot and hash when reproducibility matters. Normalized fields never authorize rewriting completed Xunji rows.
 
 ## Apple Health
 

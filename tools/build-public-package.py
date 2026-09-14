@@ -16,7 +16,7 @@ import zipfile
 
 
 PLUGIN = "fitness-data-bridge"
-VERSION = "1.0.9"
+VERSION = "1.0.10"
 MARKETPLACE_OWNER = "shujian-agent"
 COMPONENT_PACKAGE_TYPE = "shujian-component-release"
 PUBLIC_DIRECTORIES = (

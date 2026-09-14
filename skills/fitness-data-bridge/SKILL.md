@@ -4,7 +4,7 @@ description: Use when reading or refreshing Xunji and Apple Health data, preview
 ---
 
 > Created time: 2026-08-16 00:51
-> Modified time: 2026-08-26 18:13
+> Modified time: 2026-09-14 18:00
 
 # Fitness Data Bridge
 
@@ -19,3 +19,5 @@ description: Use when reading or refreshing Xunji and Apple Health data, preview
 9. Xunji training experience and action notes are user-feedback surfaces. Keep the training experience empty during publication and export only explicit natural-language `settings.user_facing_instruction` plus a necessary translated duration instruction to an action note. Never write provenance, intent labels, IDs, hashes, or internal markers into either field.
 10. For a requested multi-week refresh, enumerate every natural-week start in the requested interval and refresh each exact week; do not treat `latest_summary.md` as proof that intervening weeks exist. Require the stable post-SynFit settle check before marking each week planning-eligible.
 11. Return SHA-256 values for every generated week artifact. If the requesting device cannot yet see the Mac's OneDrive outputs and an authorized cross-device transport is used, compare source and destination hashes before accepting the copied files as the same facts; do not silently replace an existing different artifact.
+12. Distinguish synchronization readiness from statistics completeness. Preserve raw record types; normalize absent loaded-action types only through hash-bound personal mappings. Report unclassified loaded sets explicitly, never as zero workload. Feedback must retain record identity, version and action position. A missing personal mapping routes to workspace data; modify the Connector only for a demonstrated read/projection defect with valid inputs.
+13. Use `python -m fitness_data_bridge.facts_review --workspace <Fitness> --facts <week.json> [<week.json> ...]` to review retained facts without connecting to apps. It returns recalculated statistics, traceable feedback and session-match candidates, and never changes lifecycle. Save reviewed decisions in workspace correction events through Planner, and require receipt identity evidence before applying completion candidates.
