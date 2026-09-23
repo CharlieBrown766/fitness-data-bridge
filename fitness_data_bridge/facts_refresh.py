@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import sqlite3
 import subprocess
@@ -251,7 +252,7 @@ def is_completed_time(start: Any, end: Any) -> bool:
 
 def query_recent_pending(db_path: Path, start: date, end: date) -> list[dict[str, Any]]:
     today = now().date()
-    query_end = min(end, today)
+    query_end = end
     if query_end < start:
         return []
     with closing(sqlite3.connect(db_path)) as conn:
@@ -262,7 +263,6 @@ def query_recent_pending(db_path: Path, start: date, end: date) -> list[dict[str
                    length(coalesce(movement, '')) as movement_len
             from localtrains
             where datestr between ? and ?
-              and coalesce(delflag, 0) = 0
             order by datestr, id
             """,
             (start.isoformat(), query_end.isoformat()),
@@ -271,29 +271,19 @@ def query_recent_pending(db_path: Path, start: date, end: date) -> list[dict[str
     for row in rows:
         row_dict = dict(row)
         completed_row = is_completed_time(row_dict.get("start"), row_dict.get("end"))
-        if completed_row and row_dict.get("sync_type") != "done":
+        if row_dict.get("sync_type") != "done":
             pending.append(row_dict)
     return pending
 
 
-def sync_signature(db_path: Path, week: WeekRange) -> tuple[int, int, int]:
-    """Return a low-cost signature used to avoid reading a moving SynFit DB."""
-
-    query_end = min(week.end, now().date())
-    if query_end < week.start:
-        return (0, 0, 0)
+def sync_signature(db_path: Path, week: WeekRange) -> str:
+    """Hash every row read by this week's facts, including future plans/deletions."""
     with closing(sqlite3.connect(db_path)) as conn:
-        row = conn.execute(
-            """
-            select count(*), coalesce(max(version), 0),
-                   coalesce(sum(length(coalesce(movement, ''))), 0)
-            from localtrains
-            where datestr between ? and ?
-              and coalesce(delflag, 0) = 0
-            """,
-            (week.start.isoformat(), query_end.isoformat()),
-        ).fetchone()
-    return (int(row[0]), int(row[1]), int(row[2]))
+        rows = conn.execute(
+            "select id, datestr, title, start, end, movement, note, sync_type, version, delflag "
+            "from localtrains where datestr between ? and ? order by datestr, id",
+            (week.start.isoformat(), week.end.isoformat())).fetchall()
+    return facts_hash({"rows": rows})
 
 
 def wait_for_db_state(
@@ -306,7 +296,7 @@ def wait_for_db_state(
     deadline = time.time() + timeout_seconds
     last_pending: list[dict[str, Any]] = []
     stable_since: float | None = None
-    last_signature: tuple[int, int, int] | None = None
+    last_signature: str | None = None
     while time.time() < deadline:
         try:
             last_pending = query_recent_pending(db_path, week.start, week.end)
@@ -376,7 +366,8 @@ def number_value(value: Any) -> float | None:
     if value in (None, ""):
         return None
     try:
-        return float(str(value).replace(",", "."))
+        number = float(str(value).replace(",", "."))
+        return number if math.isfinite(number) else None
     except ValueError:
         return None
 
@@ -448,6 +439,10 @@ def analyze_action(action: dict[str, Any], completed_row: bool,
     counted_reps = 0
     counted_side_reps = 0
     counted_tonnage = 0.0
+    drop_segments = 0
+    drop_reps = 0
+    drop_tonnage = 0.0
+    statistics_issues = []
     max_weight: float | None = None
 
     if exetype in STRENGTH_EXETYPES:
@@ -474,6 +469,41 @@ def analyze_action(action: dict[str, Any], completed_row: bool,
                     else max(max_weight, left_weight)
                 )
 
+
+    # Drop segments contribute reps/load, never additional main set rows.
+    for set_index, item in enumerate(simplified_sets):
+        drops = item.get("dropset")
+        if not drops or not item["done"] or item.get("set_type") == "热":
+            continue
+        if not isinstance(drops, list):
+            statistics_issues.append({"set_index": set_index, "reason": "unsupported_dropset_shape"})
+            continue
+        for segment_index, segment in enumerate(drops):
+            issue = {"set_index": set_index, "segment_index": segment_index}
+            if not isinstance(segment, dict) or segment.get("dropset"):
+                statistics_issues.append({**issue, "reason": "unsupported_nested_dropset"})
+                continue
+            if segment.get("done") is False:
+                continue
+            reps = number_value(segment.get("reps"))
+            weight = number_value(segment.get("weight"))
+            left = number_value(segment.get("left_weight", segment.get("leftWeight")))
+            if (exetype not in STRENGTH_EXETYPES or reps is None or reps <= 0 or not reps.is_integer()
+                    or (exetype == "weight" and (weight is None or weight < 0))
+                    or (single_side and exetype == "weight" and (left is None or left < 0))
+                    or segment.get("unit", item.get("unit")) not in (None, "", "kg")):
+                statistics_issues.append({**issue, "reason": "incomplete_dropset_semantics"})
+                continue
+            drop_segments += 1
+            drop_reps += int(reps)
+            counted_reps += int(reps)
+            counted_side_reps += int(reps) * (2 if single_side else 1)
+            if exetype == "weight":
+                load = weight + (left if single_side else 0)
+                drop_tonnage += load * reps
+                counted_tonnage += load * reps
+                max_weight = max([v for v in (max_weight, weight, left if single_side else None) if v is not None])
+
     return {
         "key": action.get("key"),
         "label": action.get("label") or "",
@@ -498,6 +528,10 @@ def analyze_action(action: dict[str, Any], completed_row: bool,
         "counted_reps": counted_reps,
         "counted_side_reps": counted_side_reps,
         "counted_tonnage": round(counted_tonnage),
+        "drop_segments": drop_segments,
+        "drop_reps": drop_reps,
+        "drop_tonnage": round(drop_tonnage),
+        "statistics_issues": statistics_issues,
         "max_weight": max_weight,
         "sets": simplified_sets,
     }
@@ -520,7 +554,6 @@ def query_week_records(db_path: Path, week: WeekRange,
             select id, datestr, title, start, end, movement, note, sync_type, version, delflag
             from localtrains
             where datestr between ? and ?
-              and coalesce(delflag, 0) = 0
             order by datestr, id
             """,
             (week.start.isoformat(), week.end.isoformat()),
@@ -545,6 +578,9 @@ def query_week_records(db_path: Path, week: WeekRange,
         records.append(
             {
                 "id": row_dict.get("id"),
+                "delflag": row_dict.get("delflag") or 0,
+                "source_content_sha256": facts_hash({"movement": movement, "note": row_dict.get("note")}),
+                "source_actions": movement,
                 "datestr": row_dict.get("datestr"),
                 "title": title,
                 "start": row_dict.get("start"),
@@ -571,6 +607,11 @@ def query_week_records(db_path: Path, week: WeekRange,
 
 
 def build_summary(records: list[dict[str, Any]], week: WeekRange) -> dict[str, Any]:
+    from .reconciliation import deleted, duplicate_groups
+    source_records = records
+    duplicates = duplicate_groups(records)
+    excluded = {str(i) for group in duplicates for i in group["source_ids"][1:]}
+    records = [r for r in records if not deleted(r) and str(r.get("id")) not in excluded]
     by_day: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for record in records:
         by_day[str(record["datestr"])].append(record)
@@ -634,8 +675,15 @@ def build_summary(records: list[dict[str, Any]], week: WeekRange) -> dict[str, A
          "label": a.get("label"), "sets": a["unclassified_loaded_sets"]}
         for r in completed for a in r["actions"] if a.get("unclassified_loaded_sets", 0)
     ]
+    issues = [{"record_id": r.get("id"), "action_key": a.get("key"), **issue}
+              for r in completed for a in r["actions"] for issue in a.get("statistics_issues", [])]
     return {
-        "statistics_complete": not unresolved,
+        "statistics_complete": not unresolved and not issues,
+        "statistics_issues": issues,
+        "source_record_count": len(source_records),
+        "deleted_record_count": sum(1 for r in source_records if deleted(r)),
+        "duplicate_completed_records": duplicates,
+        "drop_segments": sum(a.get("drop_segments", 0) for r in completed for a in r["actions"]),
         "unclassified_loaded_actions": unresolved,
         "unclassified_loaded_sets": sum(a["sets"] for a in unresolved),
         "week_start": week.start.isoformat(),
@@ -880,7 +928,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     )
 
     payload = {
-        "facts_schema_version": 4,
+        "facts_schema_version": 5,
         "normalization_capabilities_sha256": facts_hash(capabilities),
         "statistics_complete": summary["statistics_complete"],
         "source": source,

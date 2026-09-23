@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "marketplace": "shujian-agent",
   "plugin": "fitness-data-bridge",
-  "version": "1.0.10",
+  "version": "1.0.11",
   "requires": [
     "fitness-planner>=2.0.6"
   ]

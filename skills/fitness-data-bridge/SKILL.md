@@ -4,7 +4,7 @@ description: Use when reading or refreshing Xunji and Apple Health data, preview
 ---
 
 > Created time: 2026-08-16 00:51
-> Modified time: 2026-09-14 18:00
+> Modified time: 2026-09-24 00:49
 
 # Fitness Data Bridge
 
@@ -21,3 +21,18 @@ description: Use when reading or refreshing Xunji and Apple Health data, preview
 11. Return SHA-256 values for every generated week artifact. If the requesting device cannot yet see the Mac's OneDrive outputs and an authorized cross-device transport is used, compare source and destination hashes before accepting the copied files as the same facts; do not silently replace an existing different artifact.
 12. Distinguish synchronization readiness from statistics completeness. Preserve raw record types; normalize absent loaded-action types only through hash-bound personal mappings. Report unclassified loaded sets explicitly, never as zero workload. Feedback must retain record identity, version and action position. A missing personal mapping routes to workspace data; modify the Connector only for a demonstrated read/projection defect with valid inputs.
 13. Use `python -m fitness_data_bridge.facts_review --workspace <Fitness> --facts <week.json> [<week.json> ...]` to review retained facts without connecting to apps. It returns recalculated statistics, traceable feedback and session-match candidates, and never changes lifecycle. Save reviewed decisions in workspace correction events through Planner, and require receipt identity evidence before applying completion candidates.
+
+
+## Xunji execution authority
+
+Active Xunji plans are the current execution arrangements; completed records and traceable user corrections establish actual execution. Calendar is reminder-only and may be stale. Never infer missed training from a Calendar mismatch or overwrite Xunji using Calendar. Reminder writeback requires an explicit user request. Preserve original workspace prescriptions and terminal states.
+
+Refresh all relevant natural weeks before reconciliation, including the original and moved dates. Facts schema 5 retains deleted rows and raw action content for lineage review, but excludes deleted rows from workload totals. Exact completed source duplicates are annotated and counted once; future copied plans are never deduplicated. Source records remain intact. The record window is explicit: absence from it does not prove cancellation.
+
+Run `python -m fitness_data_bridge.facts_review --workspace <Fitness> --facts <week.json> [<week.json> ...] --receipts <publication-receipt.json> [<receipt.json> ...]`. Inspect `reconciliation`: receipt IDs link directly, copy/delete successors remain candidates until lineage or user confirmation resolves them. A workspace `--confirmed-links <links.json>` array may contain `session_id`, `record_id`, `original_text`, workspace-relative `source_path` and the SHA-256 of its retained user-correction source as `source_sha256`. This is evidence overlay, never authorization to mutate lifecycle. Review active unfinished arrangements before generating or replacing a release.
+
+Drop segments contribute repetition and load totals without adding main set rows. Unknown nested shapes or missing paired-side semantics mark statistics incomplete. Missing personal mappings list the affected actions and sets; do not infer recording types or per-hand loads from an official key alone.
+
+For an application identity audit, run `python -m fitness_data_bridge.action_export --bundle <main.jsbundle> --app-version <version> --output <new-workspace-candidate.json>`. Output is candidate-only, includes source hash and duplicate keys, and never replaces a Planner registry automatically. Structural extraction is not proof of UI behavior.
+
+Use [Xunji compatibility](references/xunji-compatibility.md) for audited app identity, evidence surfaces and interface verification limits.

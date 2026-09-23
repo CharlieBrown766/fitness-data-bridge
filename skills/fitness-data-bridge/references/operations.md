@@ -1,5 +1,5 @@
 > Created time: 2026-08-16 00:51
-> Modified time: 2026-09-14 18:20
+> Modified time: 2026-09-24 00:49
 
 # Operations
 
@@ -78,3 +78,16 @@ the adapter falls back to the newest legacy `HealthAll_*.zip` under
 `数据/体况/apple-health/raw/`. An explicit JSON or ZIP path remains supported;
 the default copies external inputs and `--move-source` must be explicit before
 the source is moved into its workspace-owned directory.
+
+
+## Xunji execution authority
+
+Active Xunji plans are the current execution arrangements; completed records and traceable user corrections establish actual execution. Calendar is reminder-only and may be stale. Never infer missed training from a Calendar mismatch or overwrite Xunji using Calendar. Reminder writeback requires an explicit user request. Preserve original workspace prescriptions and terminal states.
+
+Refresh all relevant natural weeks before reconciliation, including the original and moved dates. Facts schema 5 retains deleted rows and raw action content for lineage review, but excludes deleted rows from workload totals. Exact completed source duplicates are annotated and counted once; future copied plans are never deduplicated. Source records remain intact. The record window is explicit: absence from it does not prove cancellation.
+
+Run `python -m fitness_data_bridge.facts_review --workspace <Fitness> --facts <week.json> [<week.json> ...] --receipts <publication-receipt.json> [<receipt.json> ...]`. Inspect `reconciliation`: receipt IDs link directly, copy/delete successors remain candidates until lineage or user confirmation resolves them. A workspace `--confirmed-links <links.json>` array may contain `session_id`, `record_id`, `original_text`, workspace-relative `source_path` and the SHA-256 of its retained user-correction source as `source_sha256`. This is evidence overlay, never authorization to mutate lifecycle. Review active unfinished arrangements before generating or replacing a release.
+
+Drop segments contribute repetition and load totals without adding main set rows. Unknown nested shapes or missing paired-side semantics mark statistics incomplete. Missing personal mappings list the affected actions and sets; do not infer recording types or per-hand loads from an official key alone.
+
+For an application identity audit, run `python -m fitness_data_bridge.action_export --bundle <main.jsbundle> --app-version <version> --output <new-workspace-candidate.json>`. Output is candidate-only, includes source hash and duplicate keys, and never replaces a Planner registry automatically. Structural extraction is not proof of UI behavior.

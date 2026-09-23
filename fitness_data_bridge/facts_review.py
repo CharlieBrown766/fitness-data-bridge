@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from .facts_refresh import analyze_action, build_summary, classify_record, facts_hash, file_sha256, parse_date, WeekRange
+from .reconciliation import reconcile, deleted
 from .layout import resolve_workspace, resolve_workspace_path
 from .session_bridge import load_action_capabilities, _state_scalar
 
@@ -72,7 +73,7 @@ def session_candidates(sessions, records):
     for session in sessions:
         if session["schedule"]["state"] in {"completed", "skipped", "cancelled"}:
             continue
-        matches = [r for r in records if r["title"] == session["prescription"]["title"] and r["is_completed"]]
+        matches = [r for r in records if not deleted(r) and r["title"] == session["prescription"]["title"] and r["is_completed"]]
         if matches:
             result.append({"session_id": session["session_id"], "current_state": session["schedule"]["state"],
                 "scheduled_for": session["schedule"].get("scheduled_for"),
@@ -85,6 +86,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--workspace", required=True)
     parser.add_argument("--facts", nargs="+", required=True)
+    parser.add_argument("--receipts", nargs="*", default=[])
+    parser.add_argument("--confirmed-links", help="Workspace JSON array of traceable user-confirmed session/record links")
     args = parser.parse_args()
     layout = resolve_workspace(args.workspace)
     capabilities = load_action_capabilities(layout)
@@ -105,7 +108,17 @@ def main():
         apply_feedback_dispositions(reviewed, json.loads(events_path.read_text(encoding="utf-8")))
     index = resolve_workspace_path(layout.root, _state_scalar(layout.state_file, "session_index_path"), field="session_index")
     sessions = json.loads(index.read_text(encoding="utf-8"))
-    output = {"review_schema_version": 1, "capabilities_sha256": facts_hash(capabilities), "weeks": reviewed,
+    receipts = [json.loads(resolve_workspace_path(layout.root, value, field="receipt").read_text(encoding="utf-8")) for value in args.receipts]
+    confirmed = json.loads(resolve_workspace_path(layout.root, args.confirmed_links, field="confirmed_links").read_text(encoding="utf-8")) if args.confirmed_links else []
+    for link in confirmed:
+        source = resolve_workspace_path(layout.root, link.get("source_path"), field="confirmed_link.source_path")
+        if file_sha256(source) != link.get("source_sha256"):
+            raise ValueError("User confirmation source hash differs")
+        source_text = json.dumps(json.loads(source.read_text(encoding="utf-8")), ensure_ascii=False)
+        if not link.get("original_text") or json.dumps(link["original_text"], ensure_ascii=False) not in source_text:
+            raise ValueError("User confirmation text is absent from its source")
+    reconciliation = reconcile(sessions, [r for w in reviewed for r in w["records"]], receipts, confirmed)
+    output = {"review_schema_version": 2, "reconciliation": reconciliation, "capabilities_sha256": facts_hash(capabilities), "weeks": reviewed,
               "session_candidates": session_candidates(sessions, [r for w in reviewed for r in w["records"]])}
     print(json.dumps(output, ensure_ascii=False, indent=2))
 

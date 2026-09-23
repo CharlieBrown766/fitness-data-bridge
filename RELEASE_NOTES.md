@@ -1,7 +1,14 @@
 > Created time: 2026-08-16 09:48
-> Modified time: 2026-09-01 18:18
+> Modified time: 2026-09-24 00:53
 
-# Fitness Data Bridge 1.0.9
+# Fitness Data Bridge 1.0.11
+
+- Reads active, completed and deleted Xunji records for execution reconciliation; Calendar remains reminder-only.
+- Links publication identities and traceable user-confirmed successors without changing lifecycle.
+- Counts supported drop segments and flags incomplete semantics; detects exact completed duplicates without deduplicating future copied plans.
+- Exports versioned action candidates with duplicate-key provenance.
+
+## Previous release documentation
 
 - Preserves action-specific cooldown write semantics instead of forcing every
   cooldown movement into a repetition-only Xunji record.
