@@ -197,6 +197,13 @@ class SQLitePlanExecutor:
                     "title": row["title"],
                     "sync_type": row["sync_type"],
                     "delflag": row["delflag"],
+                    "movement_rest_settings": [
+                        {"action_key": movement.get("key"),
+                         **{field: movement[field] for field in ("restTime", "warn_restTime")
+                            if field in movement}}
+                        for movement in json.loads(row["movement"])
+                        if any(field in movement for field in ("restTime", "warn_restTime"))
+                    ],
                 }
                 for row in targeted
             ],

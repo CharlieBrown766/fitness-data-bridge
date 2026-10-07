@@ -1,5 +1,5 @@
 > Created time: 2026-08-16 00:51
-> Modified time: 2026-08-26 18:13
+> Modified time: 2026-10-03 02:56
 
 # Fitness Data Bridge
 
@@ -45,3 +45,20 @@ history as 48-hour windows arrive every 12 hours. The latest export day is
 treated as partial unless `--keep-current-day` is supplied. If no merged JSON
 exists, the adapter falls back to the newest legacy `HealthAll_*.zip` under
 `raw/`.
+
+## Source package validation
+
+Component builders use the versioned local `tools/package_validation.py`
+contract described in [shared package validation](../shujian-agent/docs/package-validation.md).
+Install the build requirements with the Python selected for the builder:
+
+```bash
+python -m pip install -r requirements-build.txt
+python tools/package_validation.py --check-dependencies
+```
+
+Dependencies are checked before outputs are created. Payload, skill, privacy
+and archive checks complete in private staging before final artifacts are
+published. `SHA256SUMS.json` records the validator identity, version and hash.
+`--codex-home` is accepted only for legacy compatibility and is ignored.
+These build requirements are separate from application and connector runtimes.

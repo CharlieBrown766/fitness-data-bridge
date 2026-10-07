@@ -1,7 +1,14 @@
 > Created time: 2026-08-16 09:48
-> Modified time: 2026-09-24 00:53
+> Modified time: 2026-10-07 22:48
 
-# Fitness Data Bridge 1.0.11
+# Fitness Data Bridge 1.0.12
+
+- Maps per-session `settings.rest_seconds` to Xunji movement `restTime` in seconds.
+- Supports an explicit `settings.warmup_rest_seconds` override via `warn_restTime`, preserving omitted settings and explicit zero.
+- Rejects invalid seconds before writes; full movement readback verifies timer values and receipts expose them per action.
+- Does not change persistent action defaults or completed source records.
+
+## Previous 1.0.11 release
 
 - Reads active, completed and deleted Xunji records for execution reconciliation; Calendar remains reminder-only.
 - Links publication identities and traceable user-confirmed successors without changing lifecycle.

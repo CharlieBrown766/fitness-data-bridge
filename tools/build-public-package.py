@@ -12,11 +12,12 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import zipfile
 
 
 PLUGIN = "fitness-data-bridge"
-VERSION = "1.0.11"
+VERSION = "1.0.12"
 MARKETPLACE_OWNER = "shujian-agent"
 COMPONENT_PACKAGE_TYPE = "shujian-component-release"
 PUBLIC_DIRECTORIES = (
@@ -176,6 +177,21 @@ def privacy_scan(root: Path) -> int:
     return len(files)
 
 
+def validate_zip(zip_path: Path, expanded: Path) -> None:
+    expanded_files = relative_files(expanded)
+    with zipfile.ZipFile(zip_path, "r") as archive:
+        names = [info.filename for info in archive.infolist() if not info.is_dir()]
+        if len(names) != len(set(names)):
+            raise BuildError("Zip contains duplicate paths.")
+        if set(names) != set(expanded_files):
+            raise BuildError("Zip and expanded release contain different file sets.")
+        for relative, path in expanded_files.items():
+            archived = hashlib.sha256(archive.read(relative)).hexdigest().upper()
+            if archived != sha256(path):
+                raise BuildError(f"Zip and expanded release differ: {relative}")
+
+
+
 def deterministic_zip(source: Path, destination: Path) -> None:
     fixed_time = (2000, 1, 1, 0, 0, 0)
     with zipfile.ZipFile(destination, "x", zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
@@ -187,8 +203,26 @@ def deterministic_zip(source: Path, destination: Path) -> None:
             archive.writestr(info, path.read_bytes())
 
 
-def build(args: argparse.Namespace) -> dict:
+def validator_preflight(python: str, plugin_root: Path) -> tuple[Path, dict]:
+    validator = plugin_root / "tools" / "package_validation.py"
+    if not validator.is_file():
+        raise BuildError(f"Required local package validator not found: {validator}")
+    completed = subprocess.run(
+        [python, "-X", "utf8", str(validator), "--check-dependencies"],
+        check=False, capture_output=True, text=True, encoding="utf-8", errors="replace",
+    )
+    if completed.returncode:
+        detail = (completed.stdout + completed.stderr).strip()
+        raise BuildError(f"Package validator dependency preflight failed:\n{detail}")
+    return validator, {
+        "id": "agent-package-validation", "version": "1.0.0",
+        "sha256": sha256(validator), "scope": "local-package-structure-and-skills",
+    }
+
+
+def _build_staged(args: argparse.Namespace) -> dict:
     plugin_root = Path(__file__).resolve().parents[1]
+    package_validator, validator_record = validator_preflight(args.python, plugin_root)
     manifest = load_json(plugin_root / ".codex-plugin" / "plugin.json")
     if manifest.get("name") != PLUGIN or manifest.get("version") != VERSION:
         raise BuildError(f"Plugin identity must be {PLUGIN} {VERSION}.")
@@ -242,9 +276,7 @@ def build(args: argparse.Namespace) -> dict:
             raise BuildError(f"Missing release document: {source}")
         shutil.copy2(source, release_root / name)
 
-    codex_home = Path(args.codex_home or "~/.codex").expanduser().resolve()
-    plugin_validator = codex_home / "skills" / ".system" / "plugin-creator" / "scripts" / "validate_plugin.py"
-    skill_validator = codex_home / "skills" / ".system" / "skill-creator" / "scripts" / "quick_validate.py"
+    plugin_validator = skill_validator = package_validator
     run_validator(args.python, plugin_validator, plugin_destination, "Plugin")
     skills = []
     for skill_root in sorted((plugin_destination / "skills").iterdir()):
@@ -270,6 +302,7 @@ def build(args: argparse.Namespace) -> dict:
             "marketplaceOwner": MARKETPLACE_OWNER,
             "marketplaceGenerated": False,
             "validation": {
+                "validator": validator_record,
                 "plugin": "PASS",
                 "skills": skills,
                 "privacy": "PASS",
@@ -282,10 +315,12 @@ def build(args: argparse.Namespace) -> dict:
     )
     output_root.mkdir(parents=True, exist_ok=True)
     deterministic_zip(release_root, zip_path)
+    validate_zip(zip_path, release_root)
     zip_hash = sha256(zip_path)
     sidecar_path.write_text(f"{zip_hash}  {zip_path.name}\n", encoding="utf-8")
     return {
         "status": "BUILT",
+        "validator": validator_record,
         "plugin": PLUGIN,
         "version": VERSION,
         "package_type": COMPONENT_PACKAGE_TYPE,
@@ -299,10 +334,66 @@ def build(args: argparse.Namespace) -> dict:
     }
 
 
+def build(args: argparse.Namespace) -> dict:
+    """Validate privately, then publish only complete, verified artifacts."""
+    plugin_root = Path(__file__).resolve().parents[1]
+    validator_preflight(args.python, plugin_root)
+    if args.output_directory:
+        output_root = Path(args.output_directory).expanduser().resolve()
+    else:
+        if plugin_root.parent.name != "development":
+            raise BuildError("Default output requires <AgentRoot>/development/fitness-data-bridge.")
+        output_root = plugin_root.parent.parent / "releases" / PLUGIN / VERSION
+    output_root = output_root.resolve()
+    if output_root.is_relative_to(plugin_root):
+        raise BuildError("Release output must be outside the development source.")
+    release_name = f"{PLUGIN}-{VERSION}-public"
+    final_release = output_root / release_name
+    final_zip = output_root / f"{release_name}.zip"
+    final_sidecar = Path(f"{final_zip}.sha256")
+    for target in (final_release, final_zip, final_sidecar):
+        if target.exists():
+            raise BuildError(f"Release target already exists: {target}")
+    output_root.mkdir(parents=True, exist_ok=True)
+    created: list[Path] = []
+    with tempfile.TemporaryDirectory(prefix=".agent-build-", dir=output_root) as temporary:
+        staged_arguments = argparse.Namespace(**vars(args))
+        staged_arguments.output_directory = temporary
+        result = _build_staged(staged_arguments)
+        try:
+            # Exclusive creation claims only new paths; existing user artifacts
+            # cannot be replaced, including a concurrent build's outputs.
+            final_release.mkdir()
+            created.append(final_release)
+            shutil.copytree(Path(result["release_root"]), final_release, dirs_exist_ok=True)
+            for source, target in ((Path(result["zip_path"]), final_zip), (Path(result["zip_path"] + ".sha256"), final_sidecar)):
+                with target.open("xb") as destination:
+                    created.append(target)
+                    with source.open("rb") as origin:
+                        shutil.copyfileobj(origin, destination)
+        except BaseException:
+            for target in reversed(created):
+                resolved = target.resolve()
+                if not resolved.is_relative_to(output_root) or resolved == output_root:
+                    raise BuildError("Refusing cleanup outside the verified output directory")
+                if target.is_dir():
+                    shutil.rmtree(target)
+                else:
+                    target.unlink(missing_ok=True)
+            raise
+    result["release_root"] = str(final_release)
+    result["zip_path"] = str(final_zip)
+    if "zip_sha256_path" in result:
+        result["zip_sha256_path"] = str(final_sidecar)
+    if "file_checksum_manifest" in result:
+        result["file_checksum_manifest"] = str(final_release / "SHA256SUMS.json")
+    return result
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-directory", default="")
-    parser.add_argument("--codex-home", default="")
+    parser.add_argument("--codex-home", default="", help="Ignored legacy option; validation uses component-local tools/package_validation.py")
     parser.add_argument("--python", default=sys.executable)
     return parser.parse_args()
 

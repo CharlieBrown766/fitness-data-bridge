@@ -382,6 +382,18 @@ def _xunji_movements(
                 # exported.
                 "note": note,
             }
+        # Store timer settings on this training movement only. Never change
+        # AsyncStorage autotimer_<key> persistent action defaults.
+        for source_field, target_field in (
+            ("rest_seconds", "restTime"),
+            ("warmup_rest_seconds", "warn_restTime"),
+        ):
+            if source_field not in settings:
+                continue
+            seconds = settings[source_field]
+            if isinstance(seconds, bool) or not isinstance(seconds, int) or seconds < 0:
+                raise ValidationError(f"{key}: {source_field} must be a non-negative integer number of seconds")
+            projected_movement[target_field] = seconds
         if paired_left_right:
             projected_movement["singleSide"] = True
         result.append(projected_movement)

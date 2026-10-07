@@ -1,5 +1,5 @@
 > Created time: 2026-08-16 00:51
-> Modified time: 2026-09-24 00:49
+> Modified time: 2026-10-07 22:48
 
 # Operations
 
@@ -91,3 +91,7 @@ Run `python -m fitness_data_bridge.facts_review --workspace <Fitness> --facts <w
 Drop segments contribute repetition and load totals without adding main set rows. Unknown nested shapes or missing paired-side semantics mark statistics incomplete. Missing personal mappings list the affected actions and sets; do not infer recording types or per-hand loads from an official key alone.
 
 For an application identity audit, run `python -m fitness_data_bridge.action_export --bundle <main.jsbundle> --app-version <version> --output <new-workspace-candidate.json>`. Output is candidate-only, includes source hash and duplicate keys, and never replaces a Planner registry automatically. Structural extraction is not proof of UI behavior.
+
+## Xunji movement rest timers
+
+Publication maps `settings.rest_seconds` to the current training movement’s `restTime` (seconds). An explicit `settings.warmup_rest_seconds` maps to `warn_restTime`. Values must be non-negative integers; zero is retained. Omitted values remain omitted so app defaults continue to apply. These fields never change persistent action defaults. Unified exact movement readback verifies the values, and `movement_rest_settings` in receipt rows exposes the stored timer settings. App display and countdown behavior require separate interface verification; a database match alone does not establish those behaviors.
