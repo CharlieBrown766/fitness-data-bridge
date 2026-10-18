@@ -4,7 +4,7 @@ description: Use when reading or refreshing Xunji and Apple Health data, preview
 ---
 
 > Created time: 2026-08-16 00:51
-> Modified time: 2026-09-24 00:49
+> Modified time: 2026-10-18 13:37
 
 # Fitness Data Bridge
 
@@ -36,3 +36,10 @@ Drop segments contribute repetition and load totals without adding main set rows
 For an application identity audit, run `python -m fitness_data_bridge.action_export --bundle <main.jsbundle> --app-version <version> --output <new-workspace-candidate.json>`. Output is candidate-only, includes source hash and duplicate keys, and never replaces a Planner registry automatically. Structural extraction is not proof of UI behavior.
 
 Use [Xunji compatibility](references/xunji-compatibility.md) for audited app identity, evidence surfaces and interface verification limits.
+
+
+## Credential and complete-facts routes
+
+Use the local key-manager and retained full API conversion routes in operations.md. Import or rotate a credential only for an explicit user request; keep secrets in workspace private storage. Stage unknown-format Open API keys separately and verify only registered read endpoints with uncached responses. A verified read does not grant writes or cross-endpoint access. Do not issue/revoke keys through undocumented app-login endpoints.
+
+Preserve actual set RPE, elapsed rest, configured working/warm-up rest and heart-rate summaries as separate optional fields. A difficulty label is not measured RPE, and missing measurements are unknown. API review artifacts do not inherit Mac post-SynFit eligibility. Resolve API names through the selected hash-bound registry and personal capabilities; never invent internal keys or laterality.

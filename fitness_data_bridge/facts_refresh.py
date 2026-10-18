@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from copy import deepcopy
 import hashlib
 import json
 import math
@@ -407,6 +408,11 @@ def simplify_set(
         "unit": set_obj.get("unit") or "",
         "self_weight": bool(set_obj.get("selfWeight")),
         "single_side": single_side,
+        "rpe": deepcopy(set_obj.get("rpe")),
+        "rest_seconds": deepcopy(set_obj.get("restSeconds")),
+        "heart_rate": deepcopy(set_obj.get("heartRate")),
+        "metrics": deepcopy(set_obj.get("metrics")),
+        "source_location": deepcopy(set_obj.get("_source_location")),
     }
 
 
@@ -442,7 +448,10 @@ def analyze_action(action: dict[str, Any], completed_row: bool,
     drop_segments = 0
     drop_reps = 0
     drop_tonnage = 0.0
-    statistics_issues = []
+    statistics_issues = deepcopy(action.get("source_issues", []))
+    for set_index, original in enumerate(sets):
+        if isinstance(original, dict) and any(k in original for k in ("dropSets", "items")):
+            statistics_issues.append({"set_index": set_index, "reason": "api_nested_shape_requires_api_adapter"})
     max_weight: float | None = None
 
     if exetype in STRENGTH_EXETYPES:
@@ -518,6 +527,12 @@ def analyze_action(action: dict[str, Any], completed_row: bool,
         "difficulty": normalize_difficulty(action.get("difficulty")),
         "difficulty_label": DIFFICULTY_LABELS.get(normalize_difficulty(action.get("difficulty")), ""),
         "note": action.get("note") or "",
+        "rest_time": deepcopy(action.get("restTime")),
+        "warmup_rest_time": deepcopy(action.get("warn_restTime")),
+        "heart_rate": deepcopy(action.get("heartRate")),
+        "metrics": deepcopy(action.get("metrics")),
+        "source_issues": deepcopy(action.get("source_issues", [])),
+        "source_position": deepcopy(action.get("_source_position")),
         "single_side": single_side,
         "set_count": len(simplified_sets),
         "done_sets": len(done_sets),
@@ -575,12 +590,19 @@ def query_week_records(db_path: Path, week: WeekRange,
             if action.get("counted_sets", 0):
                 parts[part] += int(action["counted_sets"])
 
+        raw_note = row_dict.get("note")
+        try:
+            metadata = json.loads(raw_note) if isinstance(raw_note, str) else raw_note
+        except (ValueError, TypeError):
+            metadata = None
         records.append(
             {
                 "id": row_dict.get("id"),
                 "delflag": row_dict.get("delflag") or 0,
                 "source_content_sha256": facts_hash({"movement": movement, "note": row_dict.get("note")}),
                 "source_actions": movement,
+                "source_note": raw_note,
+                "heart_rate": deepcopy(metadata.get("heartRate")) if isinstance(metadata, dict) else None,
                 "datestr": row_dict.get("datestr"),
                 "title": title,
                 "start": row_dict.get("start"),
@@ -732,6 +754,7 @@ def build_summary(records: list[dict[str, Any]], week: WeekRange) -> dict[str, A
                 "record_id": item.get("id"),
                 "record_version": item.get("version"),
                 "action_index": action_index,
+                "source_position": deepcopy(action.get("source_position")),
                 "date": item["datestr"],
                 "title": item["title"],
                 "action_key": action.get("key"),
@@ -742,6 +765,13 @@ def build_summary(records: list[dict[str, Any]], week: WeekRange) -> dict[str, A
             for action_index, action in enumerate(item["actions"])
             if action.get("note")
         ],
+        "measurement_coverage": {
+            "actual_rpe_sets": sum(1 for r in completed for a in r["actions"] for s in a["sets"]
+                                   if s["done"] and s.get("rpe") not in (None, "")),
+            "actual_rest_sets": sum(1 for r in completed for a in r["actions"] for s in a["sets"]
+                                    if s["done"] and s.get("rest_seconds") is not None),
+            "heart_rate_records": sum(1 for r in completed if r.get("heart_rate") is not None),
+        },
     }
 
 

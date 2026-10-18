@@ -1,4 +1,5 @@
 from copy import deepcopy
+from contextlib import closing
 import json
 from pathlib import Path
 import sqlite3
@@ -50,7 +51,7 @@ class RestTimerTests(unittest.TestCase):
                     "app_records": [{**identity, "movements": [movement], "note": ""}]}
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "sample.db"
-            with sqlite3.connect(path) as c:
+            with closing(sqlite3.connect(path)) as c, c:
                 c.execute("create table localtrains (id integer, openid text, datestr text, end integer, "
                           "start integer, movement text, title text, templateid text, note text, watch integer, "
                           "version integer, sync_type text, delflag integer)")
@@ -60,7 +61,7 @@ class RestTimerTests(unittest.TestCase):
             self.assertEqual("DB read back", result["status"])
             self.assertEqual([{"action_key": "test_press", "restTime": 150, "warn_restTime": 60}],
                              result["rows"][0]["movement_rest_settings"])
-            with sqlite3.connect(path) as c:
+            with closing(sqlite3.connect(path)) as c, c:
                 stored = json.loads(c.execute("select movement from localtrains").fetchone()[0])
                 stored[0]["restTime"] = 90
                 c.execute("update localtrains set movement=?", (json.dumps(stored, ensure_ascii=False,

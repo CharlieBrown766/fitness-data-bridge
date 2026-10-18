@@ -1,5 +1,5 @@
 > Created time: 2026-08-16 00:51
-> Modified time: 2026-10-03 02:56
+> Modified time: 2026-10-18 13:37
 
 # Fitness Data Bridge
 
@@ -7,7 +7,8 @@ This private plugin is the application boundary between the generic Fitness Plan
 
 It provides:
 
-- Xunji training, food and body-data clients, cache controls and credential slots;
+- Xunji training, food and body-data clients, cache controls, single-slot credential import and endpoint-bound Open API read verification;
+- source-attributed RPE, rest and heart-rate facts, plus a separate full-API review conversion with name/side/completeness checks;
 - Xunji local SQLite publication with completed-record protection and exact readback;
 - SynFit refresh launch and bounded synchronization polling on the target Mac; an already-running SynFit instance is restarted once before polling so a no-op `open` cannot leave new rows pending;
 - Apple Calendar scoped write through EventKit with exact wall-clock reminders,

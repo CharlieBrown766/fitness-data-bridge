@@ -1,7 +1,14 @@
 > Created time: 2026-08-16 09:48
-> Modified time: 2026-10-07 22:48
+> Modified time: 2026-10-18 13:37
 
-# Fitness Data Bridge 1.0.12
+# Fitness Data Bridge 1.0.13
+
+- Supports atomic single-slot legacy credential import and separately staged Open API keys with individually verified read endpoints.
+- Preserves source-attributed RPE, target/actual rest, heart-rate and source-position evidence through facts review.
+- Converts retained full API responses with explicit identity, laterality, superset and drop-segment handling.
+- Explicitly closes SQLite connections in the cross-platform rest-timer fixture.
+
+## Previous 1.0.12 release
 
 - Maps per-session `settings.rest_seconds` to Xunji movement `restTime` in seconds.
 - Supports an explicit `settings.warmup_rest_seconds` override via `warn_restTime`, preserving omitted settings and explicit zero.

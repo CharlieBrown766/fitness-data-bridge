@@ -9,10 +9,11 @@ import re
 from typing import Any, Iterable
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+from .xunji_credentials import VerifiedReadCredential
 
 
 _PREFIXED_SECRET = re.compile(
-    r"(?i)\b(?:xjllm|xjfood|xjbody)_[A-Za-z0-9]{12,}\b"
+    r"(?i)\b(?:xjllm|xjfood|xjbody|xjtpl)_[A-Za-z0-9]{12,}\b"
 )
 _AUTHORIZATION_SECRET = re.compile(
     r"(?i)(Authorization\s*:\s*Bearer\s+)[A-Za-z0-9_.-]{16,}"
@@ -96,6 +97,8 @@ def post_json(
     user_agent: str = "fitness-planner-xunji-open-api/1.0",
     success_required: bool = False,
 ) -> HttpResponse:
+    if isinstance(credential, VerifiedReadCredential) and url not in credential.allowed_urls:
+        raise XunjiOpenApiError("Open API credential is not verified for this endpoint; write access is not inferred")
     request = Request(
         url,
         data=json.dumps(body, ensure_ascii=False).encode("utf-8"),

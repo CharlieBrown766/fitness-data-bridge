@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+from copy import deepcopy
 import json
 from pathlib import Path
 
@@ -16,18 +17,43 @@ def review_payload(payload, capabilities):
     for original in payload["records"]:
         record = dict(original)
         actions = []
-        for action in original["actions"]:
+        for action_index, action in enumerate(original["actions"]):
             # Retained facts use simplified field names; recover source shape
             # explicitly, without copying earlier derived counts as raw data.
             raw = {k: action.get(k) for k in ("key", "label", "type", "exetype", "difficulty", "note")}
             raw["singleSide"] = action.get("single_side", False)
+            raw["_source_position"] = deepcopy(action.get("source_position"))
+            for target, source in (("restTime", "rest_time"), ("warn_restTime", "warmup_rest_time"),
+                                   ("heartRate", "heart_rate"), ("metrics", "metrics"), ("source_issues", "source_issues")):
+                raw[target] = deepcopy(action.get(source))
+            raw["source_issues"] = raw["source_issues"] or []
             raw["sets"] = [{
                 "done": s["done"], "setType": s.get("set_type"),
                 "weight": s.get("weight"), "left_weight": s.get("left_weight"),
                 "reps": s.get("reps"), "time": s.get("time"),
                 "unit": s.get("unit"), "selfWeight": s.get("self_weight"),
                 "dropset": s.get("dropset"),
+                "rpe": deepcopy(s.get("rpe")), "restSeconds": deepcopy(s.get("rest_seconds")),
+                "heartRate": deepcopy(s.get("heart_rate")), "metrics": deepcopy(s.get("metrics")),
+                "_source_location": deepcopy(s.get("source_location")),
             } for s in action["sets"]]
+            # Older native snapshots retained source_actions even when their view omitted measurements.
+            sources = original.get("source_actions", [])
+            source_action = sources[action_index] if isinstance(sources, list) and action_index < len(sources) else None
+            if (isinstance(source_action, dict) and source_action.get("key") == action.get("key")
+                    and source_action.get("label") == action.get("label")):
+                for key in ("restTime", "warn_restTime", "heartRate", "metrics"):
+                    if raw.get(key) is None:
+                        raw[key] = deepcopy(source_action.get(key))
+                source_sets = source_action.get("sets", [])
+                if isinstance(source_sets, list) and len(source_sets) == len(raw["sets"]):
+                    for target, source in zip(raw["sets"], source_sets):
+                        if isinstance(source, dict):
+                            for key in ("rpe", "restSeconds", "heartRate", "metrics"):
+                                if target.get(key) is None:
+                                    target[key] = deepcopy(source.get(key))
+                            if any(k in source for k in ("dropSets", "items")):
+                                raw["source_issues"].append({"reason": "api_nested_shape_requires_api_adapter"})
             actions.append(analyze_action(raw, record["is_completed"], capabilities))
         record["actions"] = actions
         record["is_rest"], record["is_cardio"], record["is_strength"] = classify_record(

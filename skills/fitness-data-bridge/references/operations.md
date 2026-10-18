@@ -1,5 +1,5 @@
 > Created time: 2026-08-16 00:51
-> Modified time: 2026-10-07 22:48
+> Modified time: 2026-10-18 13:42
 
 # Operations
 
@@ -95,3 +95,22 @@ For an application identity audit, run `python -m fitness_data_bridge.action_exp
 ## Xunji movement rest timers
 
 Publication maps `settings.rest_seconds` to the current training movement’s `restTime` (seconds). An explicit `settings.warmup_rest_seconds` maps to `warn_restTime`. Values must be non-negative integers; zero is retained. Omitted values remain omitted so app defaults continue to apply. These fields never change persistent action defaults. Unified exact movement readback verifies the values, and `movement_rest_settings` in receipt rows exposes the stored timer settings. App display and countdown behavior require separate interface verification; a database match alone does not establish those behaviors.
+
+## Local credential import and Open API read verification
+
+Use `python -m fitness_data_bridge.xunji_key_manager --workspace <Fitness> ...`. All secrets remain under the workspace private directory. Supply a token through stdin or `--key-file`; never put it in a command argument, log, report or skill. Status reports presence and format/verification state without key text. Status is not current server authentication.
+
+- `import --slot training --key-file <private-file>` merges one legacy credential without replacing other slots. An existing different value or active read binding requires explicit `--replace`. Food/body legacy slots remain isolated.
+- `stage-open --key-file <private-file>` stages a new opaque Open API token without assuming an undocumented prefix or scope. It keeps legacy keys usable. Replacing a different staged key requires `--replace` and clears previous read grants.
+- `verify-open --endpoint training.query --date YYYY-MM-DD` makes one uncached, rate-limited read against the registered training endpoint. `training.query_full` and official-plan `plan.query` are also available; the latter lists plans and needs no date. A failed or malformed response grants nothing. There is no retry loop, key issuance or revocation.
+- Add `--activate-read` only when the user wants that successful endpoint verification to activate the staged key for reads. Verification is bound to the key digest and exact read URL. It does not grant cross-domain access, write/dry-run-upsert permission or access to another read endpoint. Environment-variable overrides retain their explicit legacy behavior.
+
+The schema-2 credential document retains the schema-1 `xunji` slots and separately stores the staged key, verified read records and explicit read bindings. Old schema-1 files and text training-key files remain readable. This does not establish that the new Key replaces every old LLM Key. The app shows a full new Key once; reissuing or revoking it can invalidate agents. Those app operations require their own explicit request and are not performed by this manager.
+
+## Retained full API response to review facts
+
+`python -m fitness_data_bridge.api_facts --workspace <Fitness> --planner-root <selected-Planner> --api-file <retained-full-response.json> --week-start YYYY-MM-DD --output <new-workspace-file.json>` converts a retained cache envelope whose registered request records `include_full_data: true`, without calling apps. Both training-client and shared Open API cache formats are supported; bare responses, summary requests and mismatched request digests are refused. It verifies the exact state-bound Planner bundle and action registry hashes and the personal-capability binding. It refuses to overwrite an existing output.
+
+API Chinese action names resolve only through the selected registry and its exact aliases; unresolved or ambiguous names remain incomplete. Superset children retain their source movement/round positions and completion flags; `dropSets` converts separately from native `dropset`. Left/right loads require explicit source laterality, never name-based guessing. RPE, target and actual rest, metrics and heart-rate summaries remain distinct optional evidence through retained-facts review. Older native snapshots can recover these measurements from matching retained raw actions.
+
+The resulting API artifact is review evidence and carries `planning_eligible: false`: it has no post-SynFit settle attestation. It never replaces Mac-source provenance, advances lifecycle or publishes plans. Unknown nested shapes mark statistics incomplete.
