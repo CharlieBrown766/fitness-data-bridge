@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "workspace": {
+    "id": "66c60570-8250-420a-ad7b-42145081ba8b",
+    "name": "Shujian Agent",
+    "slug": "shujian-agent",
+    "url": "https://linear.app/shujian-agent",
+    "mcp": "linear_Shujian_Agent"
+  },
+  "team": {
+    "id": "9c39c3d8-bd5b-406e-a748-aa8ea4a853f7",
+    "name": "Shujiandu",
+    "key": "SHU"
+  },
+  "project": {
+    "id": "b2b18cac-8f9e-45b8-9c15-d0ff415befb7",
+    "identifier": "P-SHU-37",
+    "name": "Fitness Data Bridge · 数据接入与发布",
+    "url": "https://linear.app/shujian-agent/project/fitness-data-bridge-数据接入与发布-0c1d434719f0"
+  },
+  "initiative": {
+    "id": "71788804-c7fa-4244-877a-39447261921f",
+    "identifier": "I-11",
+    "name": "Fitness Data Bridge",
+    "url": "https://linear.app/shujian-agent/initiative/fitness-data-bridge-63a1dae5f6af"
+  },
+  "worklog_project_key": "fitness-data-bridge",
+  "scope": "训记与 Apple Health 事实接入，以及受控半 Block 写入、SynFit 刷新和 Calendar 独立读回。",
+  "business_parent": "shujian-agent",
+  "issues": [
+    {
+      "id": "SHU-63",
+      "title": "训记与 Apple Health 事实接入及去重基线",
+      "url": "https://linear.app/shujian-agent/issue/SHU-63/训记与-apple-health-事实接入及去重基线"
+    },
+    {
+      "id": "SHU-64",
+      "title": "半 Block 原子发布与 Calendar 精确读回基线",
+      "url": "https://linear.app/shujian-agent/issue/SHU-64/半-block-原子发布与-calendar-精确读回基线"
+    },
+    {
+      "id": "SHU-65",
+      "title": "Open API 分端点凭据与完整事实复核基线",
+      "url": "https://linear.app/shujian-agent/issue/SHU-65/open-api-分端点凭据与完整事实复核基线"
+    },
+    {
+      "id": "SHU-66",
+      "title": "补齐目标 Mac 半 Block 发布全链验收",
+      "url": "https://linear.app/shujian-agent/issue/SHU-66/补齐目标-mac-半-block-发布全链验收"
+    }
+  ],
+  "repository": "https://github.com/CharlieBrown766/fitness-data-bridge"
+}

@@ -1,5 +1,5 @@
 > Created time: 2026-08-16 00:51
-> Modified time: 2026-08-25 02:34
+> Modified time: 2026-10-30 19:34
 
 # Fitness Data Bridge development contract
 
@@ -23,3 +23,9 @@
   Only Shujian Agent may accept this component into `COMPONENTS.json`, issue the
   marketplace manifest, and install it. Component tests validate payloads
   directly and never create a temporary component marketplace.
+
+## Linear 工作记录
+
+- 本组件绑定 Shujian Agent 工作区的 `Fitness Data Bridge · 数据接入与发布`（P-SHU-37）；精确 UUID、范围与任务链接见 `.agents/development/linear-project.json`。
+- 使用独立 `linear-worklog` Skill：开始时恢复本项目 pending，关键阶段同步 issue，结束前读回核验；项目简报按实际成果发布。
+- 本绑定只覆盖本组件开发与验收。个人业务数据、其他 Agent 和组合 Release/Delivery 按各自范围归属，不默认写入本项目。
