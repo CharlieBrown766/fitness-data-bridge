@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "workspace": {
     "id": "66c60570-8250-420a-ad7b-42145081ba8b",
     "name": "Shujian Agent",
@@ -9,14 +9,8 @@
   },
   "team": {
     "id": "9c39c3d8-bd5b-406e-a748-aa8ea4a853f7",
-    "name": "Shujiandu",
+    "name": "Shujian Agent",
     "key": "SHU"
-  },
-  "project": {
-    "id": "b2b18cac-8f9e-45b8-9c15-d0ff415befb7",
-    "identifier": "P-SHU-37",
-    "name": "Fitness Data Bridge · 数据接入与发布",
-    "url": "https://linear.app/shujian-agent/project/fitness-data-bridge-数据接入与发布-0c1d434719f0"
   },
   "initiative": {
     "id": "71788804-c7fa-4244-877a-39447261921f",
@@ -24,30 +18,78 @@
     "name": "Fitness Data Bridge",
     "url": "https://linear.app/shujian-agent/initiative/fitness-data-bridge-63a1dae5f6af"
   },
-  "worklog_project_key": "fitness-data-bridge",
-  "scope": "训记与 Apple Health 事实接入，以及受控半 Block 写入、SynFit 刷新和 Calendar 独立读回。",
+  "scope": "训记 SQLite/API 来源、完整事实刷新、统计复核、去重及凭据边界；SHU-63 保留跨来源历史基线，Apple Health 另立项目。；完整半 Block 的训记事务、一次 SynFit 刷新、Calendar 整批投影与统一读回；独立提醒修复不归此操作。；Apple Health 导出读取、合并、重叠去重与派生日级事实；引用 SHU-63 的跨来源历史基线，不承载个人健康数据。；已发布半 Block Calendar 事件的独立比对、备注/闹钟原位修复、默认提醒抑制与精确读回；保持事件身份和时间。",
   "business_parent": "shujian-agent",
-  "issues": [
+  "repository": "https://github.com/CharlieBrown766/fitness-data-bridge",
+  "projects": [
     {
-      "id": "SHU-63",
-      "title": "训记与 Apple Health 事实接入及去重基线",
-      "url": "https://linear.app/shujian-agent/issue/SHU-63/训记与-apple-health-事实接入及去重基线"
+      "id": "b2b18cac-8f9e-45b8-9c15-d0ff415befb7",
+      "identifier": "P-SHU-37",
+      "name": "Fitness Data Bridge · 训记数据接入",
+      "url": "https://linear.app/shujian-agent/project/fitness-data-bridge-训记数据接入-0c1d434719f0",
+      "worklog_project_key": "fitness-data-bridge",
+      "scope": "训记 SQLite/API 来源、完整事实刷新、统计复核、去重及凭据边界；SHU-63 保留跨来源历史基线，Apple Health 另立项目。",
+      "skills": [
+        "fitness-data-bridge"
+      ],
+      "issue_identifiers": [
+        "SHU-63",
+        "SHU-65"
+      ],
+      "reference_issue_identifiers": []
     },
     {
-      "id": "SHU-64",
-      "title": "半 Block 原子发布与 Calendar 精确读回基线",
-      "url": "https://linear.app/shujian-agent/issue/SHU-64/半-block-原子发布与-calendar-精确读回基线"
+      "id": "81731c4e-ca84-417d-9b3f-39c4caa26f62",
+      "identifier": "P-SHU-45",
+      "name": "Fitness Data Bridge · 训练计划发布",
+      "url": "https://linear.app/shujian-agent/project/fitness-data-bridge-训练计划发布-8f9939c3bcd1",
+      "worklog_project_key": "fitness-plan-publishing",
+      "scope": "完整半 Block 的训记事务、一次 SynFit 刷新、Calendar 整批投影与统一读回；独立提醒修复不归此操作。",
+      "skills": [
+        "fitness-data-bridge"
+      ],
+      "issue_identifiers": [
+        "SHU-64",
+        "SHU-66"
+      ],
+      "reference_issue_identifiers": []
     },
     {
-      "id": "SHU-65",
-      "title": "Open API 分端点凭据与完整事实复核基线",
-      "url": "https://linear.app/shujian-agent/issue/SHU-65/open-api-分端点凭据与完整事实复核基线"
+      "id": "a6d03979-5af8-4791-8566-f87e66cf0c75",
+      "identifier": "P-SHU-55",
+      "name": "Fitness Data Bridge · Apple Health 数据接入",
+      "url": "https://linear.app/shujian-agent/project/fitness-data-bridge-apple-health-数据接入-19c9c104c859",
+      "worklog_project_key": "fitness-health",
+      "scope": "Apple Health 导出读取、合并、重叠去重与派生日级事实；引用 SHU-63 的跨来源历史基线，不承载个人健康数据。",
+      "skills": [
+        "fitness-data-bridge"
+      ],
+      "issue_identifiers": [],
+      "reference_issue_identifiers": [
+        "SHU-63"
+      ]
     },
     {
-      "id": "SHU-66",
-      "title": "补齐目标 Mac 半 Block 发布全链验收",
-      "url": "https://linear.app/shujian-agent/issue/SHU-66/补齐目标-mac-半-block-发布全链验收"
+      "id": "87434e48-8318-42cb-97e9-0ce139789a40",
+      "identifier": "P-SHU-56",
+      "name": "Fitness Data Bridge · 日历提醒维护",
+      "url": "https://linear.app/shujian-agent/project/fitness-data-bridge-日历提醒维护-a42bef802189",
+      "worklog_project_key": "fitness-calendar",
+      "scope": "已发布半 Block Calendar 事件的独立比对、备注/闹钟原位修复、默认提醒抑制与精确读回；保持事件身份和时间。",
+      "skills": [
+        "fitness-data-bridge"
+      ],
+      "issue_identifiers": [],
+      "reference_issue_identifiers": [
+        "SHU-64",
+        "SHU-66"
+      ]
     }
   ],
-  "repository": "https://github.com/CharlieBrown766/fitness-data-bridge"
+  "project_selection": {
+    "existing_issue": "读取远端当前主项目后恢复；历史跨领域任务不复制。",
+    "new_work": "按 projects 中的 Skill 和明确能力范围选择唯一主项目；同一 Skill 跨项目时按操作目标区分。",
+    "cross_project": "保留一个主归属并关联其他领域任务。",
+    "unmatched": "unbound；禁止按组件目录默认投递到列表首项。"
+  }
 }
