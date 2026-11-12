@@ -1,7 +1,12 @@
 > Created time: 2026-08-16 09:48
-> Modified time: 2026-10-18 13:37
+> Modified time: 2026-11-12 18:15
 
-# Fitness Data Bridge 1.0.13
+# Fitness Data Bridge 1.0.14
+
+- Publishes standalone home core workouts alongside strength sessions in the same Xunji batch.
+- Includes core movements, set counts, duration and paired sides in exact database readback.
+
+## Previous 1.0.13 release
 
 - Supports atomic single-slot legacy credential import and separately staged Open API keys with individually verified read endpoints.
 - Preserves source-attributed RPE, target/actual rest, heart-rate and source-position evidence through facts review.
