@@ -301,7 +301,7 @@ def _source_movements(prescription: dict[str, Any]) -> list[dict[str, Any]]:
         return movements
     if prescription.get("action_key"):
         return [prescription]
-    raise ValidationError("Strength prescription has no movements")
+    raise ValidationError("Xunji prescription has no movements")
 
 
 def _xunji_movements(
@@ -310,7 +310,7 @@ def _xunji_movements(
     result = []
     for movement in _source_movements(prescription):
         if not isinstance(movement, dict) or not movement.get("action_key"):
-            raise ValidationError("Each strength movement requires action_key")
+            raise ValidationError("Each Xunji movement requires action_key")
         key = str(movement["action_key"])
         capability = capabilities.get(key)
         if capability is None:
@@ -420,7 +420,16 @@ def project_session(
     calendar_notes = calendar_training_summary(session["prescription"])
     app_records: list[dict[str, Any]] = []
     database_scope: list[dict[str, str]] = []
-    if session["session_type"] == "strength":
+    prescription = session["prescription"]
+    home_core = (
+        session["session_type"] == "recovery"
+        and prescription.get("context") == "home"
+        and any(
+            isinstance(movement, dict) and movement.get("section") == "core"
+            for movement in (prescription.get("movements") or [prescription])
+        )
+    )
+    if session["session_type"] == "strength" or home_core:
         app_records = [
             {
                 "date": target_date,
@@ -430,7 +439,7 @@ def project_session(
                 # workspace receipt, not in Xunji's user-feedback field.
                 "note": "",
                 "movements": _xunji_movements(
-                    session["prescription"],
+                    prescription,
                     capabilities or load_action_capabilities(layout),
                 ),
             }

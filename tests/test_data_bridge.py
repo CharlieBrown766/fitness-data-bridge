@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import closing
 from datetime import date, datetime, timedelta, timezone
 import hashlib
 import json
@@ -752,6 +753,79 @@ class DataBridgeTests(unittest.TestCase):
             )
             self.assertEqual("2026-08-20", projection["replacement_window"]["start"])
             self.assertEqual("2026-08-25", projection["replacement_window"]["end"])
+
+    def test_half_block_writes_and_reads_back_home_core_with_strength(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = WorkspaceFixture(Path(directory))
+            layout = resolve_workspace(fixture.root)
+            capabilities_path = fixture.root / "用户/训练档案/动作能力.json"
+            capabilities = json.loads(capabilities_path.read_text(encoding="utf-8"))
+            for key, label, exetype in (
+                ("bird-dog", "鸟狗式", "plus_weight"),
+                ("chest-stretch", "胸部拉伸", "stretch"),
+            ):
+                capabilities["actions"].append(
+                    {"key": key, "label": label, "availability": {"planning_eligible": True},
+                     "write_semantics": {"exetype": exetype}}
+                )
+            dump(capabilities_path, capabilities)
+            personal_path = fixture.root / "用户/训练档案/personal-data-v5.json"
+            personal = json.loads(personal_path.read_text(encoding="utf-8"))
+            personal["action_capabilities"]["sha256"] = sha256(capabilities_path)
+            dump(personal_path, personal)
+
+            release = half_block_release()
+            core = session(7)
+            core["session_type"] = "recovery"
+            core["schedule"]["scheduled_for"] = release["sessions"][-1]["schedule"]["scheduled_for"]
+            paired_set = {"set_role": "effective", "reps": 8, "unit": "repetitions",
+                          "load": None, "side_loads": {"left": None, "right": None}}
+            core["prescription"] = {
+                "title": "B1 Home Core", "cycle_position": "B1", "context": "home",
+                "estimated_minutes": 10,
+                "movements": [
+                    {"action_key": "bird-dog", "section": "core",
+                     "laterality": {"recording": "paired_left_right_per_set"},
+                     "settings": {"rest_seconds": 30}, "sets": [paired_set, paired_set]},
+                    {"action_key": "chest-stretch", "section": "cooldown",
+                     "sets": [{"set_role": "recovery", "reps": 30, "unit": "seconds", "load": None}]},
+                ],
+            }
+            core["prescription_sha256"] = canonical_sha256(core["prescription"])
+            release["sessions"].append(core)
+            projection = project_release(release, layout=layout)
+            self.assertEqual(7, len(projection["app_records"]))
+            self.assertEqual(7, len(projection["calendar_events"]))
+            task = projection["app_records"][-1]
+            self.assertEqual("B1 Home Core", task["title"])
+            self.assertEqual(core["session_id"], projection["database_identity_map"][-1]["session_id"])
+            self.assertIn({"date": task["date"], "title": task["title"]}, projection["database_readback_scope"])
+            bird_dog, stretch = task["movements"]
+            self.assertTrue(bird_dog["singleSide"])
+            self.assertEqual(30, bird_dog["restTime"])
+            self.assertEqual(["8", "8"], [item["reps"] for item in bird_dog["sets"]])
+            self.assertTrue(all(item["selfWeight"] and not item["done"] for item in bird_dog["sets"]))
+            self.assertEqual(30, stretch["sets"][0]["time"])
+
+            database = Path(directory) / "Xunji.db"
+            with closing(sqlite3.connect(database)) as connection, connection:
+                connection.execute(
+                    "create table localtrains (id integer, openid text, datestr text, end integer, "
+                    "start integer, movement text, title text, templateid text, note text, watch integer, "
+                    "version integer, sync_type text, delflag integer)"
+                )
+            executor = SQLitePlanExecutor(database)
+            self.assertEqual(7, executor.dry_run(projection)["insert_count"])
+            self.assertEqual(7, len(executor.write(projection)["inserted_ids"]))
+            readback = executor.readback(projection)
+            self.assertEqual("DB read back", readback["status"])
+            self.assertIn(task["title"], [row["title"] for row in readback["rows"]])
+
+            core["prescription"]["movements"].pop(0)
+            core["prescription_sha256"] = canonical_sha256(core["prescription"])
+            recovery_only = project_release(release, layout=layout)
+            self.assertEqual(6, len(recovery_only["app_records"]))
+            self.assertEqual(7, len(recovery_only["calendar_events"]))
 
     def test_later_release_revision_preserves_completed_sessions(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

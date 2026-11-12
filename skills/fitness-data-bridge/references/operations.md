@@ -1,5 +1,5 @@
 > Created time: 2026-08-16 00:51
-> Modified time: 2026-10-18 13:42
+> Modified time: 2026-11-12 18:03
 
 # Operations
 
@@ -11,7 +11,7 @@ Run `scripts/fitness_data_bridge_release.py --workspace <Fitness> --release <wor
 
 Live publication requires `--write --authorization <file>` on the target Mac. The schema-2.0 authorization binds `phase_id`, `block_id`, `release_id`, `revision`, `release_sha256`, the ordered `session_ids`, the exact `replacement_window`, `confirmed: true`, `one_time: true`, and a timezone-aware `expires_at`.
 
-All strength sessions are written in one Xunji transaction, SynFit is launched once, and all release events are written to Calendar in one batch. Database and Calendar are read back as one release before one receipt is finalized. Do not invoke the legacy session route repeatedly.
+All strength and home-core sessions are written in one Xunji transaction, SynFit is launched once, and all release events are written to Calendar in one batch. Database and Calendar are read back as one release before one receipt is finalized. Do not invoke the legacy session route repeatedly.
 
 Calendar defaults may specify `reminder_times` as unique same-day `HH:MM`
 values that precede the event start. The connector writes these as exact alarm
